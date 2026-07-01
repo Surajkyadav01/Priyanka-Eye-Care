@@ -1,0 +1,6 @@
+{
+  "name": "Priyanka Eye Care",
+  "description": "Premium Eye Care Hospital in Suriyawan, Bhadohi offering advanced eye checkup, cataract surgery, and modern vision testing.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
