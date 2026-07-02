@@ -134,7 +134,7 @@ export default function Contact() {
                   id="enquiry-name"
                   required
                   placeholder="Enter name..."
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-blue-700 bg-slate-50 focus:bg-white transition"
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 bg-slate-50/50 focus:bg-white transition shadow-xs"
                 />
               </div>
 
@@ -145,7 +145,7 @@ export default function Contact() {
                   id="enquiry-phone"
                   required
                   placeholder="Enter phone number..."
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-blue-700 bg-slate-50 focus:bg-white transition"
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 bg-slate-50/50 focus:bg-white transition shadow-xs"
                 />
               </div>
 
@@ -156,7 +156,7 @@ export default function Contact() {
                   required
                   rows={3}
                   placeholder="What is your query about?"
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-blue-700 bg-slate-50 focus:bg-white transition"
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 bg-slate-50/50 focus:bg-white transition shadow-xs"
                 />
               </div>
 

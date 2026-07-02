@@ -191,7 +191,7 @@ export default function AppointmentForm({ selectedDoctor, selectedService, onApp
                     placeholder="Enter your first and last name"
                     value={formData.name}
                     onChange={handleInputChange}
-                    className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all bg-slate-50 focus:bg-white"
+                    className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition-all bg-slate-50/50 focus:bg-white shadow-xs"
                   />
                 </div>
 
@@ -209,7 +209,7 @@ export default function AppointmentForm({ selectedDoctor, selectedService, onApp
                     placeholder="e.g. +91 94150 80016"
                     value={formData.phone}
                     onChange={handleInputChange}
-                    className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all bg-slate-50 focus:bg-white"
+                    className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition-all bg-slate-50/50 focus:bg-white shadow-xs"
                   />
                 </div>
 
@@ -226,7 +226,7 @@ export default function AppointmentForm({ selectedDoctor, selectedService, onApp
                     placeholder="e.g. your-name@gmail.com"
                     value={formData.email}
                     onChange={handleInputChange}
-                    className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all bg-slate-50 focus:bg-white"
+                    className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition-all bg-slate-50/50 focus:bg-white shadow-xs"
                   />
                 </div>
               </div>
@@ -245,7 +245,7 @@ export default function AppointmentForm({ selectedDoctor, selectedService, onApp
                     required
                     value={formData.service}
                     onChange={handleInputChange}
-                    className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all bg-slate-50 focus:bg-white cursor-pointer"
+                    className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition-all bg-slate-50/50 focus:bg-white cursor-pointer shadow-xs"
                   >
                     <option value="">-- Choose Eye Treatment --</option>
                     {SERVICES.map(srv => (
@@ -266,7 +266,7 @@ export default function AppointmentForm({ selectedDoctor, selectedService, onApp
                     required
                     value={formData.doctor}
                     onChange={handleInputChange}
-                    className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all bg-slate-50 focus:bg-white cursor-pointer"
+                    className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition-all bg-slate-50/50 focus:bg-white cursor-pointer shadow-xs"
                   >
                     <option value="">-- Choose Doctor Specialist --</option>
                     {DOCTORS.map(doc => (
@@ -289,7 +289,7 @@ export default function AppointmentForm({ selectedDoctor, selectedService, onApp
                     min={new Date().toISOString().split('T')[0]} // Block historical dates
                     value={formData.date}
                     onChange={handleInputChange}
-                    className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all bg-slate-50 focus:bg-white cursor-pointer"
+                    className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition-all bg-slate-50/50 focus:bg-white cursor-pointer shadow-xs font-sans"
                   />
                 </div>
               </div>
@@ -332,7 +332,7 @@ export default function AppointmentForm({ selectedDoctor, selectedService, onApp
                   placeholder="Share details such as eye pain, blurry vision, double vision, headache, etc."
                   value={formData.message}
                   onChange={handleInputChange}
-                  className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all bg-slate-50 focus:bg-white"
+                  className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition-all bg-slate-50/50 focus:bg-white shadow-xs"
                 />
               </div>
 
