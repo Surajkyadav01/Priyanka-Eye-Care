@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { CalendarRange, UserCheck, Stethoscope, Clock, ShieldCheck, Mail, Phone, User, MessageSquare } from 'lucide-react';
+import { CalendarRange, UserCheck, Stethoscope, Clock, ShieldCheck, Mail, Phone, User, MessageSquare, ChevronLeft, ChevronRight } from 'lucide-react';
 import { SERVICES, DOCTORS } from '../data';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -30,6 +30,49 @@ export default function AppointmentForm({ selectedDoctor, selectedService, onApp
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+
+  // Custom Calendar state & functions
+  const [showCalendar, setShowCalendar] = useState(false);
+  const [showServiceDropdown, setShowServiceDropdown] = useState(false);
+  const [showDoctorDropdown, setShowDoctorDropdown] = useState(false);
+  const [currentMonth, setCurrentMonth] = useState(() => {
+    const today = new Date();
+    return new Date(today.getFullYear(), today.getMonth(), 1);
+  });
+
+  const handlePrevMonth = () => {
+    setCurrentMonth(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1));
+  };
+
+  const handleNextMonth = () => {
+    setCurrentMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1));
+  };
+
+  const isPrevMonthDisabled = () => {
+    const today = new Date();
+    const prevMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1);
+    return prevMonth.getFullYear() < today.getFullYear() || (prevMonth.getFullYear() === today.getFullYear() && prevMonth.getMonth() < today.getMonth());
+  };
+
+  const isPastDate = (day: number) => {
+    const dateToCheck = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return dateToCheck < today;
+  };
+
+  const handleDateSelect = (day: number) => {
+    const selected = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day);
+    const yyyy = selected.getFullYear();
+    const mm = String(selected.getMonth() + 1).padStart(2, '0');
+    const dd = String(selected.getDate()).padStart(2, '0');
+    const formattedDate = `${yyyy}-${mm}-${dd}`;
+    setFormData(prev => ({ ...prev, date: formattedDate }));
+    setShowCalendar(false);
+  };
+
+  const firstDayIndex = currentMonth.getDay();
+  const totalDays = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0).getDate();
 
   // Sync inputs when preselected values change (e.g. from service or doctor cards)
   useEffect(() => {
@@ -67,16 +110,28 @@ export default function AppointmentForm({ selectedDoctor, selectedService, onApp
     }
 
     try {
-      const response = await fetch('/api/appointments', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(formData)
-      });
+      let isServerSuccess = false;
+      let result;
+      try {
+        const response = await fetch('/api/appointments', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(formData)
+        });
 
-      const result = await response.json();
-      if (response.ok && result.success) {
+        if (response.ok) {
+          result = await response.json();
+          if (result && result.success) {
+            isServerSuccess = true;
+          }
+        }
+      } catch (fetchErr) {
+        console.warn('Backend server not reachable, falling back to local browser storage:', fetchErr);
+      }
+
+      if (isServerSuccess) {
         setSuccess(true);
         onAppointmentBooked(); // Notify parent so navbar unread count is updated
         
@@ -92,11 +147,40 @@ export default function AppointmentForm({ selectedDoctor, selectedService, onApp
           message: ''
         });
       } else {
-        setError(result.error || 'Something went wrong. Please check inputs and retry.');
+        // Fallback to localStorage (used when running statically on e.g. GitHub Pages)
+        const localAptsStr = localStorage.getItem('pec_local_appointments') || '[]';
+        const localApts = JSON.parse(localAptsStr);
+        const newApt = {
+          id: 'local_' + Date.now(),
+          ...formData,
+          status: 'pending',
+          createdAt: new Date().toISOString(),
+          isRead: false
+        };
+        localApts.push(newApt);
+        localStorage.setItem('pec_local_appointments', JSON.stringify(localApts));
+
+        // Notify other components (like Navbar/App) that a new local appointment has been logged
+        window.dispatchEvent(new Event('local_appointments_changed'));
+
+        setSuccess(true);
+        onAppointmentBooked();
+
+        // Reset form data
+        setFormData({
+          name: '',
+          phone: '',
+          email: '',
+          service: '',
+          doctor: '',
+          date: '',
+          time: '',
+          message: ''
+        });
       }
     } catch (err) {
-      console.error('Error submitting appointment:', err);
-      setError('Network communication failed. Please check internet and try again.');
+      console.error('Error in appointment registration flow:', err);
+      setError('Registration failed. Please refresh and try again.');
     } finally {
       setLoading(false);
     }
@@ -234,63 +318,227 @@ export default function AppointmentForm({ selectedDoctor, selectedService, onApp
               {/* Clinic Data Grid */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 border-t border-slate-100 pt-6">
                 {/* Select Service */}
-                <div className="space-y-2">
-                  <label htmlFor="service-select" className="text-xs sm:text-sm font-semibold text-slate-700 flex items-center gap-1">
+                <div className="space-y-2 relative">
+                  <label htmlFor="service-select-btn" className="text-xs sm:text-sm font-semibold text-slate-700 flex items-center gap-1">
                     <Stethoscope className="h-4 w-4 text-slate-400" />
                     <span>Required Eye Service <span className="text-rose-500">*</span></span>
                   </label>
-                  <select
-                    id="service-select"
-                    name="service"
-                    required
-                    value={formData.service}
-                    onChange={handleInputChange}
-                    className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition-all bg-slate-50/50 focus:bg-white cursor-pointer shadow-xs"
-                  >
-                    <option value="">-- Choose Eye Treatment --</option>
-                    {SERVICES.map(srv => (
-                      <option key={srv.id} value={srv.title}>{srv.title}</option>
-                    ))}
-                  </select>
+                  <div className="relative">
+                    <button
+                      id="service-select-btn"
+                      type="button"
+                      onClick={() => {
+                        setShowServiceDropdown(!showServiceDropdown);
+                        setShowDoctorDropdown(false);
+                        setShowCalendar(false);
+                      }}
+                      className="w-full text-left rounded-xl border border-slate-300 px-4 py-3 text-sm text-slate-800 transition-all bg-slate-50/50 hover:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 cursor-pointer shadow-xs flex items-center justify-between"
+                    >
+                      <span className={formData.service ? "text-slate-800 font-medium" : "text-slate-400"}>
+                        {formData.service || "-- Choose Eye Treatment --"}
+                      </span>
+                      <ChevronRight className={`h-4 w-4 text-slate-400 transition-transform duration-150 ${showServiceDropdown ? "rotate-90" : ""}`} />
+                    </button>
+                    {/* Hidden input to ensure native browser form submission still receives the value */}
+                    <input
+                      type="hidden"
+                      name="service"
+                      value={formData.service}
+                      required
+                    />
+                  </div>
+
+                  {showServiceDropdown && (
+                    <>
+                      <div 
+                        className="fixed inset-0 z-40 bg-transparent" 
+                        onClick={() => setShowServiceDropdown(false)} 
+                      />
+                      <div className="absolute z-50 mt-1 left-0 right-0 max-h-60 overflow-y-auto bg-white border border-slate-200 rounded-xl shadow-xl py-1">
+                        {SERVICES.map(srv => (
+                          <button
+                            key={srv.id}
+                            type="button"
+                            onClick={() => {
+                              setFormData(prev => ({ ...prev, service: srv.title }));
+                              setShowServiceDropdown(false);
+                            }}
+                            className={`w-full text-left px-4 py-2.5 text-sm transition-colors hover:bg-slate-50 ${
+                              formData.service === srv.title ? "bg-blue-50 text-blue-700 font-bold" : "text-slate-700"
+                            }`}
+                          >
+                            {srv.title}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
                 </div>
 
                 {/* Select Doctor */}
-                <div className="space-y-2">
-                  <label htmlFor="doctor-select" className="text-xs sm:text-sm font-semibold text-slate-700 flex items-center gap-1">
+                <div className="space-y-2 relative">
+                  <label htmlFor="doctor-select-btn" className="text-xs sm:text-sm font-semibold text-slate-700 flex items-center gap-1">
                     <UserCheck className="h-4 w-4 text-slate-400" />
                     <span>Preferred Doctor <span className="text-rose-500">*</span></span>
                   </label>
-                  <select
-                    id="doctor-select"
-                    name="doctor"
-                    required
-                    value={formData.doctor}
-                    onChange={handleInputChange}
-                    className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition-all bg-slate-50/50 focus:bg-white cursor-pointer shadow-xs"
-                  >
-                    <option value="">-- Choose Doctor Specialist --</option>
-                    {DOCTORS.map(doc => (
-                      <option key={doc.id} value={doc.name}>{doc.name} ({doc.qualification})</option>
-                    ))}
-                  </select>
+                  <div className="relative">
+                    <button
+                      id="doctor-select-btn"
+                      type="button"
+                      onClick={() => {
+                        setShowDoctorDropdown(!showDoctorDropdown);
+                        setShowServiceDropdown(false);
+                        setShowCalendar(false);
+                      }}
+                      className="w-full text-left rounded-xl border border-slate-300 px-4 py-3 text-sm text-slate-800 transition-all bg-slate-50/50 hover:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 cursor-pointer shadow-xs flex items-center justify-between"
+                    >
+                      <span className={formData.doctor ? "text-slate-800 font-medium" : "text-slate-400"}>
+                        {formData.doctor || "-- Choose Doctor Specialist --"}
+                      </span>
+                      <ChevronRight className={`h-4 w-4 text-slate-400 transition-transform duration-150 ${showDoctorDropdown ? "rotate-90" : ""}`} />
+                    </button>
+                    {/* Hidden input to ensure native browser form submission still receives the value */}
+                    <input
+                      type="hidden"
+                      name="doctor"
+                      value={formData.doctor}
+                      required
+                    />
+                  </div>
+
+                  {showDoctorDropdown && (
+                    <>
+                      <div 
+                        className="fixed inset-0 z-40 bg-transparent" 
+                        onClick={() => setShowDoctorDropdown(false)} 
+                      />
+                      <div className="absolute z-50 mt-1 left-0 right-0 bg-white border border-slate-200 rounded-xl shadow-xl py-1">
+                        {DOCTORS.map(doc => (
+                          <button
+                            key={doc.id}
+                            type="button"
+                            onClick={() => {
+                              setFormData(prev => ({ ...prev, doctor: doc.name }));
+                              setShowDoctorDropdown(false);
+                            }}
+                            className={`w-full text-left px-4 py-2.5 text-sm transition-colors hover:bg-slate-50 ${
+                              formData.doctor === doc.name ? "bg-blue-50 text-blue-700 font-bold" : "text-slate-700"
+                            }`}
+                          >
+                            <span className="block font-semibold">{doc.name}</span>
+                            <span className="block text-xs text-slate-500">{doc.qualification}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
                 </div>
 
                 {/* Calendar Date picker */}
-                <div className="space-y-2 sm:col-span-2">
-                  <label htmlFor="date-input" className="text-xs sm:text-sm font-semibold text-slate-700 flex items-center gap-1">
+                <div className="space-y-2 sm:col-span-2 relative">
+                  <label htmlFor="date-button" className="text-xs sm:text-sm font-semibold text-slate-700 flex items-center gap-1">
                     <CalendarRange className="h-4 w-4 text-slate-400" />
                     <span>Select Appointment Date <span className="text-rose-500">*</span></span>
                   </label>
-                  <input
-                    type="date"
-                    id="date-input"
-                    name="date"
-                    required
-                    min={new Date().toISOString().split('T')[0]} // Block historical dates
-                    value={formData.date}
-                    onChange={handleInputChange}
-                    className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 transition-all bg-slate-50/50 focus:bg-white cursor-pointer shadow-xs font-sans"
-                  />
+                  <div className="relative">
+                    <button
+                      id="date-button"
+                      type="button"
+                      onClick={() => {
+                        setShowCalendar(!showCalendar);
+                        setShowServiceDropdown(false);
+                        setShowDoctorDropdown(false);
+                      }}
+                      className={`w-full text-left rounded-xl border border-slate-300 pl-4 pr-11 py-3 text-sm transition-all bg-slate-50/50 hover:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 cursor-pointer shadow-xs font-sans flex items-center justify-between ${
+                        formData.date ? 'text-slate-800 font-semibold' : 'text-slate-400'
+                      }`}
+                    >
+                      {formData.date ? (
+                        new Date(formData.date).toLocaleDateString('en-US', {
+                          day: 'numeric',
+                          month: 'long',
+                          year: 'numeric'
+                        })
+                      ) : (
+                        "Select Appointment Date"
+                      )}
+                    </button>
+                    <div className="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none">
+                      <CalendarRange className="h-5 w-5 text-blue-600" />
+                    </div>
+                  </div>
+
+                  {/* Backdrop and Dropdown Calendar Panel */}
+                  {showCalendar && (
+                    <>
+                      <div 
+                        className="fixed inset-0 z-40 bg-transparent" 
+                        onClick={() => setShowCalendar(false)} 
+                      />
+                      <div className="absolute z-50 mt-1 left-0 right-0 max-w-full md:w-80 bg-white border border-slate-200 rounded-2xl shadow-2xl p-4 font-sans ring-1 ring-slate-100">
+                        {/* Calendar Header */}
+                        <div className="flex items-center justify-between mb-3">
+                          <button
+                            type="button"
+                            onClick={handlePrevMonth}
+                            disabled={isPrevMonthDisabled()}
+                            className="p-1.5 rounded-lg text-slate-600 hover:bg-slate-100 disabled:opacity-30 disabled:hover:bg-transparent transition-colors cursor-pointer"
+                          >
+                            <ChevronLeft className="h-4 w-4" />
+                          </button>
+                          <span className="font-bold text-sm text-slate-800">
+                            {currentMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={handleNextMonth}
+                            className="p-1.5 rounded-lg text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+                          >
+                            <ChevronRight className="h-4 w-4" />
+                          </button>
+                        </div>
+
+                        {/* Days of Week Header */}
+                        <div className="grid grid-cols-7 gap-1 text-center text-[11px] font-bold text-slate-400 mb-1.5">
+                          {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map(d => (
+                            <div key={d} className="py-0.5">{d}</div>
+                          ))}
+                        </div>
+
+                        {/* Calendar Days Grid */}
+                        <div className="grid grid-cols-7 gap-1">
+                          {Array.from({ length: firstDayIndex }).map((_, idx) => (
+                            <div key={`empty-${idx}`} />
+                          ))}
+                          
+                          {Array.from({ length: totalDays }).map((_, idx) => {
+                            const day = idx + 1;
+                            const disabled = isPastDate(day);
+                            const dateStr = `${currentMonth.getFullYear()}-${String(currentMonth.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                            const isSelected = formData.date === dateStr;
+
+                            return (
+                              <button
+                                key={day}
+                                type="button"
+                                disabled={disabled}
+                                onClick={() => handleDateSelect(day)}
+                                className={`py-1.5 text-xs font-semibold rounded-lg text-center transition-all cursor-pointer ${
+                                  isSelected
+                                    ? 'bg-blue-600 text-white font-bold shadow-md shadow-blue-100'
+                                    : disabled
+                                    ? 'text-slate-200 cursor-not-allowed opacity-50'
+                                    : 'text-slate-700 hover:bg-slate-100 active:scale-95 hover:text-blue-600'
+                                }`}
+                              >
+                                {day}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
 

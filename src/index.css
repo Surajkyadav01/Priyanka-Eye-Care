@@ -81,38 +81,5 @@
   transition: 0s;
 }
 
-/* Ensure native date inputs on mobile do not have invisible white text under OS dark themes */
-input[type="date"] {
-  color-scheme: light !important;
-  color: #1e293b !important;
-}
 
-input[type="date"]::-webkit-datetime-edit {
-  color: #1e293b !important;
-}
-
-input[type="date"]::-webkit-datetime-edit-fields-wrapper {
-  color: #1e293b !important;
-}
-
-input[type="date"]::-webkit-datetime-edit-text {
-  color: #1e293b !important;
-}
-
-input[type="date"]::-webkit-datetime-edit-month-field {
-  color: #1e293b !important;
-}
-
-input[type="date"]::-webkit-datetime-edit-day-field {
-  color: #1e293b !important;
-}
-
-input[type="date"]::-webkit-datetime-edit-year-field {
-  color: #1e293b !important;
-}
-
-input[type="date"]::-webkit-date-and-time-value {
-  color: #1e293b !important;
-  min-height: 1.5em;
-}
 

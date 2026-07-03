@@ -56,14 +56,30 @@ export default function App() {
 
   // Sync / fetch unread badge from backend
   const fetchUnreadBadge = async () => {
+    let isServerSuccess = false;
     try {
       const response = await fetch('/api/appointments/unread-badge');
-      const data = await response.json();
-      if (response.ok && typeof data.unreadCount === 'number') {
-        setUnreadCount(data.unreadCount);
+      if (response.ok) {
+        const data = await response.json();
+        if (data && typeof data.unreadCount === 'number') {
+          setUnreadCount(data.unreadCount);
+          isServerSuccess = true;
+        }
       }
     } catch (err) {
-      console.warn('Failed to fetch live notifications:', err);
+      console.warn('Failed to fetch live notifications from server:', err);
+    }
+
+    if (!isServerSuccess) {
+      // Local storage fallback for static deployments (e.g. GitHub Pages)
+      try {
+        const localAptsStr = localStorage.getItem('pec_local_appointments') || '[]';
+        const localApts = JSON.parse(localAptsStr);
+        const unread = localApts.filter((apt: any) => !apt.isRead).length;
+        setUnreadCount(unread);
+      } catch (e) {
+        console.error('Error parsing offline appointments unread count:', e);
+      }
     }
   };
 
@@ -75,6 +91,12 @@ export default function App() {
     if (params.get('admin') === 'true') {
       setAdminOpen(true);
     }
+
+    // Listener for local appointments changes
+    const handleLocalChange = () => {
+      fetchUnreadBadge();
+    };
+    window.addEventListener('local_appointments_changed', handleLocalChange);
 
     // Polling interval to check for new bookings on admin portal (every 12 seconds)
     const interval = setInterval(fetchUnreadBadge, 12000);
@@ -113,6 +135,7 @@ export default function App() {
     window.addEventListener('scroll', handleScroll);
     return () => {
       clearInterval(interval);
+      window.removeEventListener('local_appointments_changed', handleLocalChange);
       window.removeEventListener('scroll', handleScroll);
       if (scrollTimeoutRef.current) {
         window.clearTimeout(scrollTimeoutRef.current);
