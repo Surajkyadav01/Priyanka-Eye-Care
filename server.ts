@@ -32,8 +32,40 @@ if (!fs.existsSync(DATA_FILE)) {
   fs.writeFileSync(DATA_FILE, JSON.stringify([], null, 2), 'utf-8');
 }
 
-// Admin Password setting (fallback to robust default if not specified)
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'PriyankaEyeCare@Admin';
+const CONFIG_FILE = path.join(DATA_DIR, 'config.json');
+
+// Helper to get admin password dynamically
+function getAdminPassword(): string {
+  try {
+    if (fs.existsSync(CONFIG_FILE)) {
+      const data = fs.readFileSync(CONFIG_FILE, 'utf-8');
+      const config = JSON.parse(data);
+      if (config && config.adminPassword) {
+        return config.adminPassword;
+      }
+    }
+  } catch (err) {
+    console.error('Error reading admin password from config:', err);
+  }
+  return process.env.ADMIN_PASSWORD || 'doctor';
+}
+
+// Helper to update admin password dynamically
+function saveAdminPassword(newPassword: string): boolean {
+  try {
+    let config: any = {};
+    if (fs.existsSync(CONFIG_FILE)) {
+      const data = fs.readFileSync(CONFIG_FILE, 'utf-8');
+      config = JSON.parse(data);
+    }
+    config.adminPassword = newPassword;
+    fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2), 'utf-8');
+    return true;
+  } catch (err) {
+    console.error('Error saving admin password:', err);
+    return false;
+  }
+}
 
 // Helper to read appointments
 function getAppointments(): Appointment[] {
@@ -169,11 +201,50 @@ app.post('/api/admin/login', (req, res) => {
   if (!password) {
     return res.status(400).json({ error: 'Password is required' });
   }
-  if (password === ADMIN_PASSWORD) {
+  if (password === getAdminPassword()) {
     return res.json({ success: true, token: 'validated_admin_session_key' });
   } else {
     return res.status(401).json({ error: 'Incorrect password. Access denied.' });
   }
+});
+
+// Admin Password Update Endpoint
+app.post('/api/admin/change-password', (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+  const activePassword = getAdminPassword();
+
+  if (currentPassword !== activePassword) {
+    return res.status(401).json({ error: 'Incorrect current password' });
+  }
+  if (!newPassword || newPassword.length < 4) {
+    return res.status(400).json({ error: 'New password must be at least 4 characters' });
+  }
+
+  const success = saveAdminPassword(newPassword);
+  if (!success) {
+    return res.status(500).json({ error: 'Failed to update password on server' });
+  }
+
+  return res.json({ success: true, message: 'Password successfully updated' });
+});
+
+// Admin Password Reset Endpoint (using Registered Email Verification)
+app.post('/api/admin/reset-password', (req, res) => {
+  const { resetKey, newPassword } = req.body;
+  
+  if (resetKey !== 'ksurajyadav93@gmail.com') {
+    return res.status(401).json({ error: 'Invalid reset code or email' });
+  }
+  if (!newPassword || newPassword.length < 4) {
+    return res.status(400).json({ error: 'New password must be at least 4 characters' });
+  }
+
+  const success = saveAdminPassword(newPassword);
+  if (!success) {
+    return res.status(500).json({ error: 'Failed to reset password on server' });
+  }
+
+  return res.json({ success: true, message: 'Password successfully reset' });
 });
 
 // Book Appointment
@@ -222,7 +293,7 @@ app.post('/api/appointments', async (req, res) => {
 // Fetch All Appointments (Protected by x-admin-password)
 app.get('/api/appointments', (req, res) => {
   const password = req.headers['x-admin-password'] || req.query.password;
-  if (password !== ADMIN_PASSWORD) {
+  if (password !== getAdminPassword()) {
     return res.status(401).json({ error: 'Unauthorized credentials' });
   }
 
@@ -233,7 +304,7 @@ app.get('/api/appointments', (req, res) => {
 // Update Appointment Status (Protected)
 app.post('/api/appointments/:id/status', (req, res) => {
   const password = req.headers['x-admin-password'] || req.body.password;
-  if (password !== ADMIN_PASSWORD) {
+  if (password !== getAdminPassword()) {
     return res.status(401).json({ error: 'Unauthorized credentials' });
   }
 
@@ -265,7 +336,7 @@ app.post('/api/appointments/:id/status', (req, res) => {
 // Mark Notification as Read
 app.post('/api/appointments/mark-read', (req, res) => {
   const password = req.headers['x-admin-password'] || req.body.password;
-  if (password !== ADMIN_PASSWORD) {
+  if (password !== getAdminPassword()) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
@@ -279,7 +350,7 @@ app.post('/api/appointments/mark-read', (req, res) => {
 // Delete Appointment (Protected)
 app.delete('/api/appointments/:id', (req, res) => {
   const password = req.headers['x-admin-password'] || req.query.password;
-  if (password !== ADMIN_PASSWORD) {
+  if (password !== getAdminPassword()) {
     return res.status(401).json({ error: 'Unauthorized credentials' });
   }
 
@@ -302,7 +373,7 @@ app.delete('/api/appointments/:id', (req, res) => {
 // Live Admin Stats (Protected)
 app.get('/api/admin/stats', (req, res) => {
   const password = req.headers['x-admin-password'] || req.query.password;
-  if (password !== ADMIN_PASSWORD) {
+  if (password !== getAdminPassword()) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
@@ -346,7 +417,7 @@ async function startServer() {
     console.log(` Priyanka Eye Care Web Server Running Successfully`);
     console.log(` Port: ${PORT} | Mode: ${process.env.NODE_ENV || 'development'}`);
     console.log(` API endpoints prefix: http://localhost:${PORT}/api`);
-    console.log(` Admin Dashboard Password configured: "${ADMIN_PASSWORD}"`);
+    console.log(` Admin Dashboard Password configured: "${getAdminPassword()}"`);
     console.log(`========================================================`);
   });
 }

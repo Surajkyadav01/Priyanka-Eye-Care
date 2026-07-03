@@ -47,29 +47,6 @@ export default function Navbar({ unreadCount, onOpenAdmin, onScrollToSection, ac
 
   return (
     <>
-      {/* Top utility bar */}
-      <div className="bg-blue-900 text-white text-[11px] px-8 py-2.5 flex justify-between items-center transition-all">
-        <div className="flex gap-6">
-          <span className="flex items-center gap-1 font-medium">
-            📞 +91 94150 80016
-          </span>
-          <span className="hidden sm:inline-flex items-center gap-1 opacity-90">
-            📍 Suriyawan, Bhadohi (221404)
-          </span>
-        </div>
-        <div className="flex items-center gap-4">
-          <span className="opacity-80 hidden md:inline">Mon - Sun: 09:00 AM - 08:00 PM</span>
-          <div className="relative cursor-pointer hover:opacity-95" onClick={onOpenAdmin}>
-            <span className="opacity-80 font-semibold hover:text-blue-200 transition">Admin Panel</span>
-            {unreadCount > 0 && (
-              <span className="absolute -top-1 -right-2.5 bg-rose-500 text-[9px] w-4 h-4 rounded-full flex items-center justify-center font-bold text-white ring-1 ring-blue-900 animate-pulse">
-                {unreadCount}
-              </span>
-            )}
-          </div>
-        </div>
-      </div>
-
       {/* Main Navbar */}
       <nav
         id="main-navbar"
@@ -283,6 +260,17 @@ export default function Navbar({ unreadCount, onOpenAdmin, onScrollToSection, ac
                   className="w-full rounded-lg bg-blue-600 py-3 text-sm font-bold text-white hover:bg-blue-700 transition"
                 >
                   Book Appointment
+                </button>
+
+                <button
+                  id="mobile-drawer-admin-btn"
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    onOpenAdmin();
+                  }}
+                  className="w-full rounded-lg bg-slate-100 py-2 text-xs font-bold text-slate-700 hover:bg-slate-200 transition"
+                >
+                  Admin Dashboard
                 </button>
               </div>
             </motion.div>

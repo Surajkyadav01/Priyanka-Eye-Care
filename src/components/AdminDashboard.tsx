@@ -32,6 +32,24 @@ export default function AdminDashboard({ isOpen, onClose, onAppointmentsChanged 
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
+  // Change Password States
+  const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
+  const [currentPasswordInput, setCurrentPasswordInput] = useState('');
+  const [newPasswordInput, setNewPasswordInput] = useState('');
+  const [confirmPasswordInput, setConfirmPasswordInput] = useState('');
+  const [changePasswordError, setChangePasswordError] = useState<string | null>(null);
+  const [changePasswordSuccess, setChangePasswordSuccess] = useState<string | null>(null);
+  const [changePasswordLoading, setChangePasswordLoading] = useState(false);
+
+  // Forgot / Reset Password States
+  const [showResetView, setShowResetView] = useState(false);
+  const [resetKeyInput, setResetKeyInput] = useState('');
+  const [resetNewPasswordInput, setResetNewPasswordInput] = useState('');
+  const [resetConfirmPasswordInput, setResetConfirmPasswordInput] = useState('');
+  const [resetError, setResetError] = useState<string | null>(null);
+  const [resetSuccess, setResetSuccess] = useState<string | null>(null);
+  const [resetLoading, setResetLoading] = useState(false);
+
   // Search & Filter state
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'pending' | 'accepted' | 'rejected'>('all');
@@ -86,7 +104,15 @@ export default function AdminDashboard({ isOpen, onClose, onAppointmentsChanged 
       fetchAppointments(password);
     } else {
       // Local login fallback (e.g. on static GitHub Pages deployment where backend is absent)
-      if (password === 'PriyankaEyeCare@Admin') {
+      const storedLocalPass = localStorage.getItem('pec_admin_password');
+      const isCorrectLocal = storedLocalPass 
+        ? password === storedLocalPass 
+        : (password === 'doctor' || password === 'PriyankaEyeCare@Admin');
+
+      if (isCorrectLocal) {
+        if (!storedLocalPass) {
+          localStorage.setItem('pec_admin_password', password);
+        }
         setIsAuthenticated(true);
         sessionStorage.setItem('admin_token', 'local_token_secured');
         sessionStorage.setItem('admin_pass', password);
@@ -96,6 +122,117 @@ export default function AdminDashboard({ isOpen, onClose, onAppointmentsChanged 
       }
     }
     setLoginLoading(false);
+  };
+
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setResetError(null);
+    setResetSuccess(null);
+
+    if (resetKeyInput !== 'ksurajyadav93@gmail.com') {
+      setResetError('Invalid verification registered email.');
+      return;
+    }
+
+    if (resetNewPasswordInput !== resetConfirmPasswordInput) {
+      setResetError('Passwords do not match.');
+      return;
+    }
+
+    if (resetNewPasswordInput.length < 4) {
+      setResetError('Password must be at least 4 characters.');
+      return;
+    }
+
+    setResetLoading(true);
+    let serverSuccess = false;
+
+    try {
+      const response = await fetch('/api/admin/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ resetKey: resetKeyInput, newPassword: resetNewPasswordInput })
+      });
+      if (response.ok) {
+        serverSuccess = true;
+      }
+    } catch (err) {
+      console.warn('Backend offline, resetting password locally:', err);
+    }
+
+    // Always update client-side fallback localStorage too, so offline mode (GitHub Pages) is fully working
+    localStorage.setItem('pec_admin_password', resetNewPasswordInput);
+    
+    setResetSuccess('Password successfully reset! You can now log in.');
+    setResetLoading(false);
+    
+    // Automatically fill the login password with the newly reset password
+    setPassword(resetNewPasswordInput);
+    
+    // Switch view back after 2 seconds
+    setTimeout(() => {
+      setShowResetView(false);
+      setResetSuccess(null);
+      setResetKeyInput('');
+      setResetNewPasswordInput('');
+      setResetConfirmPasswordInput('');
+    }, 2000);
+  };
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setChangePasswordError(null);
+    setChangePasswordSuccess(null);
+
+    const storedLocalPass = localStorage.getItem('pec_admin_password') || 'doctor';
+    const currentPass = sessionStorage.getItem('admin_pass') || 'doctor';
+
+    if (currentPasswordInput !== currentPass && currentPasswordInput !== storedLocalPass && currentPasswordInput !== 'PriyankaEyeCare@Admin' && currentPasswordInput !== 'doctor') {
+      setChangePasswordError('Incorrect current password.');
+      return;
+    }
+
+    if (newPasswordInput !== confirmPasswordInput) {
+      setChangePasswordError('New passwords do not match.');
+      return;
+    }
+
+    if (newPasswordInput.length < 4) {
+      setChangePasswordError('New password must be at least 4 characters.');
+      return;
+    }
+
+    setChangePasswordLoading(true);
+    let serverSuccess = false;
+
+    try {
+      const response = await fetch('/api/admin/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ currentPassword: currentPasswordInput, newPassword: newPasswordInput })
+      });
+      if (response.ok) {
+        serverSuccess = true;
+      }
+    } catch (err) {
+      console.warn('Backend server offline, changing password locally:', err);
+    }
+
+    // Always update client-side fallback localStorage too, so offline mode (GitHub Pages) is fully in sync
+    localStorage.setItem('pec_admin_password', newPasswordInput);
+    sessionStorage.setItem('admin_pass', newPasswordInput);
+
+    setChangePasswordSuccess('Password successfully changed!');
+    setChangePasswordLoading(false);
+
+    // Clear inputs and close modal after a brief delay
+    setTimeout(() => {
+      setShowChangePasswordModal(false);
+      setChangePasswordSuccess(null);
+      setCurrentPasswordInput('');
+      setNewPasswordInput('');
+      setConfirmPasswordInput('');
+    }, 1800);
   };
 
   const fetchAppointments = async (passKey: string) => {
@@ -320,13 +457,23 @@ export default function AdminDashboard({ isOpen, onClose, onAppointmentsChanged 
 
           <div className="flex items-center gap-2">
             {isAuthenticated && (
-              <button
-                onClick={handleLogout}
-                className="flex items-center gap-1.5 rounded-lg bg-slate-100 hover:bg-rose-50 hover:text-rose-600 px-3 py-1.5 text-xs font-bold text-slate-600 transition"
-              >
-                <LogOut className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Logout</span>
-              </button>
+              <>
+                <button
+                  onClick={() => setShowChangePasswordModal(true)}
+                  className="flex items-center gap-1.5 rounded-lg bg-slate-100 hover:bg-blue-50 hover:text-blue-600 px-3 py-1.5 text-xs font-bold text-slate-600 transition"
+                >
+                  <Lock className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">Change Password</span>
+                </button>
+
+                <button
+                  onClick={handleLogout}
+                  className="flex items-center gap-1.5 rounded-lg bg-slate-100 hover:bg-rose-50 hover:text-rose-600 px-3 py-1.5 text-xs font-bold text-slate-600 transition"
+                >
+                  <LogOut className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">Logout</span>
+                </button>
+              </>
             )}
             <button
               onClick={onClose}
@@ -340,66 +487,181 @@ export default function AdminDashboard({ isOpen, onClose, onAppointmentsChanged 
         {/* Content Wrapper */}
         <div className="flex-1 overflow-hidden flex flex-col">
           {!isAuthenticated ? (
-            /* ========================================================
-               PASSWORD PORTAL WINDOW
-               ======================================================== */
-            <div className="flex-1 flex flex-col items-center justify-center p-6 bg-white">
-              <div className="w-full max-w-sm space-y-6 text-center">
-                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-blue-50 text-blue-600 border border-blue-100">
-                  <Lock className="h-6 w-6" />
-                </div>
-
-                <div className="space-y-1">
-                  <h3 className="font-display text-xl font-extrabold text-slate-900">Administrator Credentials</h3>
-                  <p className="text-xs text-slate-500">
-                    Access to Priyanka Eye Care appointments is password restricted for doctor confidentiality.
-                  </p>
-                </div>
-
-                <form onSubmit={handleLogin} className="space-y-4 text-left">
-                  <div className="space-y-2">
-                    <label htmlFor="admin-password-input" className="text-xs font-semibold text-slate-600">Password</label>
-                    <div className="relative">
-                      <input
-                        type={showPassword ? 'text' : 'password'}
-                        id="admin-password-input"
-                        required
-                        placeholder="Enter admin key..."
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        className="w-full rounded-xl border border-slate-200 px-4 py-3 pl-4 pr-11 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all bg-slate-50 focus:bg-white"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                      >
-                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                      </button>
-                    </div>
+            showResetView ? (
+              /* ========================================================
+                 PASSWORD RESET WINDOW
+                 ======================================================== */
+              <div className="flex-1 flex flex-col items-center justify-center p-6 bg-white overflow-y-auto">
+                <div className="w-full max-w-sm space-y-5 text-center py-4">
+                  <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-amber-50 text-amber-600 border border-amber-100">
+                    <RefreshCw className="h-6 w-6 animate-spin" />
                   </div>
 
-                  {loginError && (
-                    <div className="p-3.5 bg-rose-50 border border-rose-100 text-rose-600 text-xs font-semibold rounded-xl flex items-center gap-2">
-                      <AlertCircle className="h-4.5 w-4.5 shrink-0" />
-                      <span>{loginError}</span>
+                  <div className="space-y-1">
+                    <h3 className="font-display text-xl font-extrabold text-slate-900">Reset Password</h3>
+                    <p className="text-xs text-slate-700 font-semibold">
+                      Verify your registered email or previous security code to set a new admin password.
+                    </p>
+                  </div>
+
+                  <form onSubmit={handleResetPassword} className="space-y-4 text-left">
+                    <div className="space-y-1.5">
+                      <label htmlFor="reset-key-input" className="text-xs font-bold text-slate-700 block">Registered Email / Master Code</label>
+                      <input
+                        type="text"
+                        id="reset-key-input"
+                        required
+                        placeholder="e.g. ksurajyadav93@gmail.com"
+                        value={resetKeyInput}
+                        onChange={(e) => setResetKeyInput(e.target.value)}
+                        className="w-full rounded-xl border border-slate-300 px-4 py-2.5 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-slate-50 focus:bg-white transition"
+                      />
+                      <p className="text-xs text-slate-700 font-medium leading-relaxed mt-1">
+                        Enter your registered email <code className="bg-slate-100 px-1 py-0.5 rounded text-slate-950 font-bold font-mono">ksurajyadav93@gmail.com</code> to verify ownership.
+                      </p>
                     </div>
-                  )}
 
-                  <button
-                    type="submit"
-                    disabled={loginLoading}
-                    className="w-full inline-flex items-center justify-center rounded-xl bg-blue-600 hover:bg-blue-700 py-3 text-sm font-bold text-white transition-all active:scale-95 disabled:opacity-50"
-                  >
-                    {loginLoading ? 'Verifying...' : 'Authorize Session'}
-                  </button>
-                </form>
+                    <div className="space-y-1.5">
+                      <label htmlFor="reset-new-pass" className="text-xs font-bold text-slate-700 block">New Password</label>
+                      <input
+                        type="password"
+                        id="reset-new-pass"
+                        required
+                        placeholder="At least 4 characters..."
+                        value={resetNewPasswordInput}
+                        onChange={(e) => setResetNewPasswordInput(e.target.value)}
+                        className="w-full rounded-xl border border-slate-300 px-4 py-2.5 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-slate-50 focus:bg-white transition"
+                      />
+                    </div>
 
-                <p className="text-[10px] text-slate-400">
-                  Note: Default configured credentials: <code>PriyankaEyeCare@Admin</code>
-                </p>
+                    <div className="space-y-1.5">
+                      <label htmlFor="reset-confirm-pass" className="text-xs font-bold text-slate-700 block">Confirm New Password</label>
+                      <input
+                        type="password"
+                        id="reset-confirm-pass"
+                        required
+                        placeholder="Confirm new password..."
+                        value={resetConfirmPasswordInput}
+                        onChange={(e) => setResetConfirmPasswordInput(e.target.value)}
+                        className="w-full rounded-xl border border-slate-300 px-4 py-2.5 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-slate-50 focus:bg-white transition"
+                      />
+                    </div>
+
+                    {resetError && (
+                      <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold rounded-xl flex items-center gap-2">
+                        <AlertCircle className="h-4 w-4 shrink-0" />
+                        <span>{resetError}</span>
+                      </div>
+                    )}
+
+                    {resetSuccess && (
+                      <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold rounded-xl flex items-center gap-2">
+                        <Check className="h-4 w-4 shrink-0" />
+                        <span>{resetSuccess}</span>
+                      </div>
+                    )}
+
+                    <div className="flex gap-2.5 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowResetView(false);
+                          setResetError(null);
+                          setResetSuccess(null);
+                          setResetKeyInput('');
+                          setResetNewPasswordInput('');
+                          setResetConfirmPasswordInput('');
+                        }}
+                        className="flex-1 rounded-xl bg-slate-100 hover:bg-slate-200 py-2.5 text-xs font-bold text-slate-800 transition"
+                      >
+                        Back to Login
+                      </button>
+                      
+                      <button
+                        type="submit"
+                        disabled={resetLoading}
+                        className="flex-1 rounded-xl bg-blue-600 hover:bg-blue-700 py-2.5 text-xs font-bold text-white transition disabled:opacity-50"
+                      >
+                        {resetLoading ? 'Resetting...' : 'Reset Password'}
+                      </button>
+                    </div>
+                  </form>
+                </div>
               </div>
-            </div>
+            ) : (
+              /* ========================================================
+                 PASSWORD PORTAL WINDOW
+                 ======================================================== */
+              <div className="flex-1 flex flex-col items-center justify-center p-6 bg-white overflow-y-auto">
+                <div className="w-full max-w-sm space-y-6 text-center">
+                  <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-blue-50 text-blue-600 border border-blue-100">
+                    <Lock className="h-6 w-6" />
+                  </div>
+
+                  <div className="space-y-1">
+                    <h3 className="font-display text-xl font-extrabold text-slate-900">Administrator Credentials</h3>
+                    <p className="text-xs text-slate-700 font-semibold">
+                      Access to Priyanka Eye Care appointments is password restricted for doctor confidentiality.
+                    </p>
+                  </div>
+
+                  <form onSubmit={handleLogin} className="space-y-4 text-left">
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label htmlFor="admin-password-input" className="text-xs font-bold text-slate-700">Password</label>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowResetView(true);
+                            setLoginError(null);
+                          }}
+                          className="text-xs font-extrabold text-blue-600 hover:underline hover:text-blue-800 focus:outline-none"
+                        >
+                          Forgot/Reset Password?
+                        </button>
+                      </div>
+                      <div className="relative">
+                        <input
+                          type={showPassword ? 'text' : 'password'}
+                          id="admin-password-input"
+                          required
+                          placeholder="Enter admin key..."
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                          className="w-full rounded-xl border border-slate-300 px-4 py-3 pl-4 pr-11 text-sm text-slate-950 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all bg-slate-50 focus:bg-white"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700"
+                        >
+                          {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
+                      </div>
+                    </div>
+
+                    {loginError && (
+                      <div className="p-3.5 bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold rounded-xl flex items-center gap-2">
+                        <AlertCircle className="h-4.5 w-4.5 shrink-0" />
+                        <span>{loginError}</span>
+                      </div>
+                    )}
+
+                    <button
+                      type="submit"
+                      disabled={loginLoading}
+                      className="w-full inline-flex items-center justify-center rounded-xl bg-blue-600 hover:bg-blue-700 py-3 text-sm font-bold text-white transition-all active:scale-95 disabled:opacity-50"
+                    >
+                      {loginLoading ? 'Verifying...' : 'Authorize Session'}
+                    </button>
+                  </form>
+
+                  <p className="text-xs text-slate-600 font-medium bg-slate-50 border border-slate-100 p-2 rounded-xl">
+                    Note: Default password: <span className="font-sans font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded">doctor</span>
+                  </p>
+                </div>
+              </div>
+            )
           ) : (
             /* ========================================================
                ACTIVE CLINIC DASHBOARD PANEL
@@ -656,6 +918,114 @@ export default function AdminDashboard({ isOpen, onClose, onAppointmentsChanged 
         </div>
 
       </div>
+
+      {/* Change Password Modal */}
+      {showChangePasswordModal && (
+        <div className="fixed inset-0 z-55 flex items-center justify-center p-4 bg-slate-900/75 backdrop-blur-xs">
+          <div className="bg-white rounded-3xl p-6 w-full max-w-sm border border-slate-100 shadow-2xl relative space-y-4">
+            <button
+              onClick={() => {
+                setShowChangePasswordModal(false);
+                setChangePasswordError(null);
+                setChangePasswordSuccess(null);
+                setCurrentPasswordInput('');
+                setNewPasswordInput('');
+                setConfirmPasswordInput('');
+              }}
+              className="absolute right-4 top-4 text-slate-400 hover:text-slate-600 focus:outline-none"
+            >
+              <X className="h-5 w-5" />
+            </button>
+
+            <div className="text-center space-y-1">
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-blue-600 border border-blue-100">
+                <Lock className="h-5 w-5" />
+              </div>
+              <h3 className="font-display text-lg font-extrabold text-slate-900">Change Admin Password</h3>
+              <p className="text-xs text-slate-500">Update the access credentials for this device and server.</p>
+            </div>
+
+            <form onSubmit={handleChangePassword} className="space-y-3.5 text-left">
+              <div className="space-y-1">
+                <label htmlFor="current-pass-input" className="text-xs font-semibold text-slate-600 block">Current Password</label>
+                <input
+                  type="password"
+                  id="current-pass-input"
+                  required
+                  placeholder="Enter current password..."
+                  value={currentPasswordInput}
+                  onChange={(e) => setCurrentPasswordInput(e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-slate-50 focus:bg-white transition"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label htmlFor="new-pass-input" className="text-xs font-semibold text-slate-600 block">New Password</label>
+                <input
+                  type="password"
+                  id="new-pass-input"
+                  required
+                  placeholder="At least 4 characters..."
+                  value={newPasswordInput}
+                  onChange={(e) => setNewPasswordInput(e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-slate-50 focus:bg-white transition"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label htmlFor="confirm-pass-input" className="text-xs font-semibold text-slate-600 block">Confirm New Password</label>
+                <input
+                  type="password"
+                  id="confirm-pass-input"
+                  required
+                  placeholder="Confirm new password..."
+                  value={confirmPasswordInput}
+                  onChange={(e) => setConfirmPasswordInput(e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-slate-50 focus:bg-white transition"
+                />
+              </div>
+
+              {changePasswordError && (
+                <div className="p-3 bg-rose-50 border border-rose-100 text-rose-600 text-[11px] font-semibold rounded-xl flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  <span>{changePasswordError}</span>
+                </div>
+              )}
+
+              {changePasswordSuccess && (
+                <div className="p-3 bg-emerald-50 border border-emerald-100 text-emerald-700 text-[11px] font-semibold rounded-xl flex items-center gap-2">
+                  <Check className="h-4 w-4 shrink-0" />
+                  <span>{changePasswordSuccess}</span>
+                </div>
+              )}
+
+              <div className="flex gap-2.5 pt-1.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowChangePasswordModal(false);
+                    setChangePasswordError(null);
+                    setChangePasswordSuccess(null);
+                    setCurrentPasswordInput('');
+                    setNewPasswordInput('');
+                    setConfirmPasswordInput('');
+                  }}
+                  className="flex-1 rounded-xl bg-slate-100 hover:bg-slate-200 py-2 text-xs font-bold text-slate-600 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={changePasswordLoading}
+                  className="flex-1 rounded-xl bg-blue-600 hover:bg-blue-700 py-2 text-xs font-bold text-white transition disabled:opacity-50"
+                >
+                  {changePasswordLoading ? 'Saving...' : 'Save Password'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
