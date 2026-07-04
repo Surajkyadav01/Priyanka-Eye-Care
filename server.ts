@@ -10,6 +10,8 @@ import { createServer as createViteServer } from 'vite';
 import nodemailer from 'nodemailer';
 import dotenv from 'dotenv';
 import { Appointment } from './src/types';
+import { initializeApp } from 'firebase/app';
+import { getFirestore, collection, getDocs, doc, setDoc, updateDoc, deleteDoc, query, orderBy, writeBatch } from 'firebase/firestore';
 
 // Load environment variables
 dotenv.config();
@@ -33,6 +35,36 @@ if (!fs.existsSync(DATA_FILE)) {
 }
 
 const CONFIG_FILE = path.join(DATA_DIR, 'config.json');
+
+// Dynamic Firebase Firestore Setup
+let firebaseApp;
+let db: any = null;
+
+try {
+  const firebaseConfigPath = path.join(process.cwd(), 'firebase-applet-config.json');
+  if (fs.existsSync(firebaseConfigPath)) {
+    const configData = JSON.parse(fs.readFileSync(firebaseConfigPath, 'utf-8'));
+    const firebaseConfig = {
+      apiKey: configData.apiKey,
+      authDomain: configData.authDomain,
+      projectId: configData.projectId,
+      storageBucket: configData.storageBucket,
+      messagingSenderId: configData.messagingSenderId,
+      appId: configData.appId
+    };
+    firebaseApp = initializeApp(firebaseConfig);
+    if (configData.firestoreDatabaseId) {
+       db = getFirestore(firebaseApp, configData.firestoreDatabaseId);
+    } else {
+       db = getFirestore(firebaseApp);
+    }
+    console.log('Firebase Firestore initialized successfully with project ID:', configData.projectId);
+  } else {
+    console.warn('Firebase configuration file not found.');
+  }
+} catch (err) {
+  console.error('Failed to initialize Firebase Firestore:', err);
+}
 
 // Helper to get admin password dynamically
 function getAdminPassword(): string {
@@ -67,25 +99,190 @@ function saveAdminPassword(newPassword: string): boolean {
   }
 }
 
-// Helper to read appointments
-function getAppointments(): Appointment[] {
+enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId: string | null;
+    email: string | null;
+    emailVerified: boolean | null;
+    isAnonymous: boolean | null;
+    tenantId: string | null;
+    providerInfo: {
+      providerId: string | null;
+      email: string | null;
+    }[];
+  }
+}
+
+function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null): never {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: null,
+      email: null,
+      emailVerified: null,
+      isAnonymous: null,
+      tenantId: null,
+      providerInfo: []
+    },
+    operationType,
+    path
+  };
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
+
+// Helper to read local appointments
+function getLocalAppointments(): Appointment[] {
   try {
     const data = fs.readFileSync(DATA_FILE, 'utf-8');
     return JSON.parse(data) as Appointment[];
   } catch (err) {
-    console.error('Error reading appointments file:', err);
+    console.error('Error reading local appointments file:', err);
     return [];
   }
 }
 
-// Helper to write appointments
-function saveAppointments(appointments: Appointment[]): boolean {
+// Helper to write local appointments
+function saveLocalAppointments(appointments: Appointment[]): boolean {
   try {
     fs.writeFileSync(DATA_FILE, JSON.stringify(appointments, null, 2), 'utf-8');
     return true;
   } catch (err) {
-    console.error('Error writing appointments file:', err);
+    console.error('Error writing local appointments file:', err);
     return false;
+  }
+}
+
+// Helper to read appointments from Firestore (with local fallback)
+async function getAppointments(): Promise<Appointment[]> {
+  if (!db) {
+    console.warn('Firestore is not initialized. Using local file storage.');
+    return getLocalAppointments();
+  }
+  try {
+    const q = query(collection(db, 'appointments'), orderBy('createdAt', 'desc'));
+    const snapshot = await getDocs(q);
+    const list: Appointment[] = [];
+    snapshot.forEach(docSnap => {
+      list.push(docSnap.data() as Appointment);
+    });
+    return list;
+  } catch (err) {
+    try {
+      handleFirestoreError(err, OperationType.LIST, 'appointments');
+    } catch (firestoreErr) {
+      console.error('Error fetching appointments from Firestore, using local fallback:', firestoreErr);
+    }
+    return getLocalAppointments();
+  }
+}
+
+// Helper to add an appointment
+async function addAppointment(appointment: Appointment): Promise<boolean> {
+  const localList = getLocalAppointments();
+  localList.unshift(appointment);
+  saveLocalAppointments(localList);
+
+  if (!db) return true;
+  try {
+    await setDoc(doc(db, 'appointments', appointment.id), appointment);
+    return true;
+  } catch (err) {
+    try {
+      handleFirestoreError(err, OperationType.CREATE, `appointments/${appointment.id}`);
+    } catch (firestoreErr) {
+      console.error('Error adding appointment to Firestore, using local fallback:', firestoreErr);
+    }
+    return true;
+  }
+}
+
+// Helper to update appointment status
+async function updateAppointmentStatus(id: string, status: 'pending' | 'accepted' | 'rejected'): Promise<boolean> {
+  const localList = getLocalAppointments();
+  const idx = localList.findIndex(apt => apt.id === id);
+  if (idx !== -1) {
+    localList[idx].status = status;
+    localList[idx].isRead = true;
+    saveLocalAppointments(localList);
+  }
+
+  if (!db) return true;
+  try {
+    await updateDoc(doc(db, 'appointments', id), { status, isRead: true });
+    return true;
+  } catch (err) {
+    try {
+      handleFirestoreError(err, OperationType.UPDATE, `appointments/${id}`);
+    } catch (firestoreErr) {
+      console.error('Error updating appointment status in Firestore, using local fallback:', firestoreErr);
+    }
+    return true;
+  }
+}
+
+// Helper to mark all notifications as read
+async function markAllRead(): Promise<boolean> {
+  const localList = getLocalAppointments();
+  const updatedLocal = localList.map(apt => ({ ...apt, isRead: true }));
+  saveLocalAppointments(updatedLocal);
+
+  if (!db) return true;
+  try {
+    const q = query(collection(db, 'appointments'));
+    const snapshot = await getDocs(q);
+    const batch = writeBatch(db);
+    let count = 0;
+    snapshot.forEach(docSnap => {
+      const data = docSnap.data();
+      if (!data.isRead) {
+        batch.update(docSnap.ref, { isRead: true });
+        count++;
+      }
+    });
+    if (count > 0) {
+      await batch.commit();
+    }
+    return true;
+  } catch (err) {
+    try {
+      handleFirestoreError(err, OperationType.WRITE, 'appointments');
+    } catch (firestoreErr) {
+      console.error('Error marking all read in Firestore, using local fallback:', firestoreErr);
+    }
+    return true;
+  }
+}
+
+// Helper to delete an appointment
+async function deleteAppointment(id: string): Promise<boolean> {
+  const localList = getLocalAppointments();
+  const filtered = localList.filter(apt => apt.id !== id);
+  saveLocalAppointments(filtered);
+
+  if (!db) return true;
+  try {
+    await deleteDoc(doc(db, 'appointments', id));
+    return true;
+  } catch (err) {
+    try {
+      handleFirestoreError(err, OperationType.DELETE, `appointments/${id}`);
+    } catch (firestoreErr) {
+      console.error('Error deleting appointment in Firestore, using local fallback:', firestoreErr);
+    }
+    return true;
   }
 }
 
@@ -185,9 +382,9 @@ async function sendAppointmentEmail(appointment: Appointment) {
    ======================================================== */
 
 // Secure Public Unread Badge Counter (No HIPAA data leaked)
-app.get('/api/appointments/unread-badge', (req, res) => {
+app.get('/api/appointments/unread-badge', async (req, res) => {
   try {
-    const appointments = getAppointments();
+    const appointments = await getAppointments();
     const unreadCount = appointments.filter(apt => !apt.isRead).length;
     return res.json({ unreadCount });
   } catch (err) {
@@ -255,7 +452,6 @@ app.post('/api/appointments', async (req, res) => {
       return res.status(400).json({ error: 'Please fulfill all required appointment fields' });
     }
 
-    const appointments = getAppointments();
     const newAppointment: Appointment = {
       id: 'apt_' + Math.random().toString(36).substr(2, 9),
       name,
@@ -271,8 +467,7 @@ app.post('/api/appointments', async (req, res) => {
       isRead: false
     };
 
-    appointments.unshift(newAppointment); // Add to beginning
-    const success = saveAppointments(appointments);
+    const success = await addAppointment(newAppointment);
 
     if (!success) {
       return res.status(500).json({ error: 'Failed to record appointment in database' });
@@ -291,18 +486,18 @@ app.post('/api/appointments', async (req, res) => {
 });
 
 // Fetch All Appointments (Protected by x-admin-password)
-app.get('/api/appointments', (req, res) => {
+app.get('/api/appointments', async (req, res) => {
   const password = req.headers['x-admin-password'] || req.query.password;
   if (password !== getAdminPassword()) {
     return res.status(401).json({ error: 'Unauthorized credentials' });
   }
 
-  const appointments = getAppointments();
+  const appointments = await getAppointments();
   return res.json({ appointments });
 });
 
 // Update Appointment Status (Protected)
-app.post('/api/appointments/:id/status', (req, res) => {
+app.post('/api/appointments/:id/status', async (req, res) => {
   const password = req.headers['x-admin-password'] || req.body.password;
   if (password !== getAdminPassword()) {
     return res.status(401).json({ error: 'Unauthorized credentials' });
@@ -315,54 +510,52 @@ app.post('/api/appointments/:id/status', (req, res) => {
     return res.status(400).json({ error: 'Invalid appointment status' });
   }
 
-  const appointments = getAppointments();
-  const appointmentIndex = appointments.findIndex(apt => apt.id === id);
+  const appointments = await getAppointments();
+  const appointment = appointments.find(apt => apt.id === id);
 
-  if (appointmentIndex === -1) {
+  if (!appointment) {
     return res.status(404).json({ error: 'Appointment not found' });
   }
 
-  appointments[appointmentIndex].status = status;
-  appointments[appointmentIndex].isRead = true; // Set read once acted on
+  appointment.status = status;
+  appointment.isRead = true;
 
-  const success = saveAppointments(appointments);
+  const success = await updateAppointmentStatus(id, status);
   if (!success) {
     return res.status(500).json({ error: 'Failed to update database record' });
   }
 
-  return res.json({ success: true, appointment: appointments[appointmentIndex] });
+  return res.json({ success: true, appointment });
 });
 
 // Mark Notification as Read
-app.post('/api/appointments/mark-read', (req, res) => {
+app.post('/api/appointments/mark-read', async (req, res) => {
   const password = req.headers['x-admin-password'] || req.body.password;
   if (password !== getAdminPassword()) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  const appointments = getAppointments();
-  const updated = appointments.map(apt => ({ ...apt, isRead: true }));
-  saveAppointments(updated);
+  await markAllRead();
 
   return res.json({ success: true });
 });
 
 // Delete Appointment (Protected)
-app.delete('/api/appointments/:id', (req, res) => {
+app.delete('/api/appointments/:id', async (req, res) => {
   const password = req.headers['x-admin-password'] || req.query.password;
   if (password !== getAdminPassword()) {
     return res.status(401).json({ error: 'Unauthorized credentials' });
   }
 
   const { id } = req.params;
-  const appointments = getAppointments();
-  const filteredAppointments = appointments.filter(apt => apt.id !== id);
+  const appointments = await getAppointments();
+  const appointmentExists = appointments.some(apt => apt.id === id);
 
-  if (appointments.length === filteredAppointments.length) {
+  if (!appointmentExists) {
     return res.status(404).json({ error: 'Appointment not found' });
   }
 
-  const success = saveAppointments(filteredAppointments);
+  const success = await deleteAppointment(id);
   if (!success) {
     return res.status(500).json({ error: 'Failed to write updates to database' });
   }
@@ -371,13 +564,13 @@ app.delete('/api/appointments/:id', (req, res) => {
 });
 
 // Live Admin Stats (Protected)
-app.get('/api/admin/stats', (req, res) => {
+app.get('/api/admin/stats', async (req, res) => {
   const password = req.headers['x-admin-password'] || req.query.password;
   if (password !== getAdminPassword()) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  const appointments = getAppointments();
+  const appointments = await getAppointments();
   const unreadCount = appointments.filter(apt => !apt.isRead).length;
   const total = appointments.length;
   const pending = appointments.filter(apt => apt.status === 'pending').length;

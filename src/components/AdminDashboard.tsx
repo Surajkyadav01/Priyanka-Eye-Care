@@ -31,6 +31,7 @@ export default function AdminDashboard({ isOpen, onClose, onAppointmentsChanged 
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [appointmentToDelete, setAppointmentToDelete] = useState<Appointment | null>(null);
 
   // Change Password States
   const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
@@ -655,10 +656,6 @@ export default function AdminDashboard({ isOpen, onClose, onAppointmentsChanged 
                       {loginLoading ? 'Verifying...' : 'Authorize Session'}
                     </button>
                   </form>
-
-                  <p className="text-xs text-slate-600 font-medium bg-slate-50 border border-slate-100 p-2 rounded-xl">
-                    Note: Default password: <span className="font-sans font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded">doctor</span>
-                  </p>
                 </div>
               </div>
             )
@@ -896,7 +893,7 @@ export default function AdminDashboard({ isOpen, onClose, onAppointmentsChanged 
                           )}
 
                           <button
-                            onClick={() => deleteAppointment(apt.id)}
+                            onClick={() => setAppointmentToDelete(apt)}
                             disabled={actionLoading === apt.id}
                             className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-xs font-bold text-white px-3 py-2 transition border border-rose-600 shadow-xs active:scale-95"
                             title="Delete permanently"
@@ -1023,6 +1020,67 @@ export default function AdminDashboard({ isOpen, onClose, onAppointmentsChanged 
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Permanent Deletion Confirmation Modal */}
+      {appointmentToDelete && (
+        <div className="fixed inset-0 z-55 flex items-center justify-center p-4 bg-slate-900/75 backdrop-blur-xs animate-fade-in">
+          <div className="bg-white rounded-3xl p-6 w-full max-w-sm border border-slate-100 shadow-2xl relative space-y-4">
+            <button
+              onClick={() => setAppointmentToDelete(null)}
+              className="absolute right-4 top-4 text-slate-400 hover:text-slate-600 focus:outline-none"
+            >
+              <X className="h-5 w-5" />
+            </button>
+
+            <div className="text-center space-y-2">
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-rose-50 text-rose-600 border border-rose-100">
+                <Trash2 className="h-5 w-5" />
+              </div>
+              <h3 className="font-display text-lg font-extrabold text-slate-900">Confirm Permanent Deletion</h3>
+              <p className="text-xs text-slate-500">This action is permanent and cannot be undone.</p>
+            </div>
+
+            <div className="bg-slate-50 border border-slate-150 rounded-2xl p-4.5 space-y-2 text-left">
+              <p className="text-xs text-slate-600">
+                Are you sure you want to delete the appointment of:
+              </p>
+              <p className="text-sm font-extrabold text-slate-900 font-sans">
+                {appointmentToDelete.name}
+              </p>
+              <div className="text-[11px] text-slate-500 font-mono space-y-0.5 pt-1.5 border-t border-slate-200">
+                <div><strong>Phone:</strong> {appointmentToDelete.phone}</div>
+                <div><strong>Service:</strong> {appointmentToDelete.service}</div>
+                <div><strong>Slot:</strong> {appointmentToDelete.date} at {appointmentToDelete.time}</div>
+              </div>
+            </div>
+
+            <p className="text-[11px] text-slate-400 font-medium leading-relaxed text-center">
+              The record will be permanently deleted from both the database (Firebase) and the website's admin panel.
+            </p>
+
+            <div className="flex gap-2.5 pt-1.5">
+              <button
+                type="button"
+                onClick={() => setAppointmentToDelete(null)}
+                className="flex-1 rounded-xl bg-slate-100 hover:bg-slate-200 py-2.5 text-xs font-bold text-slate-600 transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  const id = appointmentToDelete.id;
+                  setAppointmentToDelete(null);
+                  await deleteAppointment(id);
+                }}
+                className="flex-1 rounded-xl bg-rose-600 hover:bg-rose-700 py-2.5 text-xs font-bold text-white transition active:scale-95 shadow-xs border border-rose-600"
+              >
+                Yes, Delete
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { CalendarRange, UserCheck, Stethoscope, Clock, ShieldCheck, Mail, Phone, User, MessageSquare, ChevronLeft, ChevronRight } from 'lucide-react';
+import { CalendarRange, UserCheck, Stethoscope, Clock, ShieldCheck, Mail, Phone, User, MessageSquare, ChevronLeft, ChevronRight, Printer, CheckCircle } from 'lucide-react';
 import { SERVICES, DOCTORS } from '../data';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -30,6 +30,18 @@ export default function AppointmentForm({ selectedDoctor, selectedService, onApp
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [bookedDetails, setBookedDetails] = useState<{
+    ticketId: string;
+    name: string;
+    phone: string;
+    email: string;
+    service: string;
+    doctor: string;
+    date: string;
+    time: string;
+    message: string;
+    registeredAt: string;
+  } | null>(null);
 
   // Custom Calendar state & functions
   const [showCalendar, setShowCalendar] = useState(false);
@@ -131,7 +143,27 @@ export default function AppointmentForm({ selectedDoctor, selectedService, onApp
         console.warn('Backend server not reachable, falling back to local browser storage:', fetchErr);
       }
 
+      const ticketId = `PEC-${new Date().getFullYear()}-${Math.floor(100000 + Math.random() * 900000)}`;
+      const registeredAt = new Date().toLocaleDateString('en-GB', {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric'
+      });
+      const details = {
+        ticketId,
+        name: formData.name,
+        phone: formData.phone,
+        email: formData.email,
+        service: formData.service,
+        doctor: formData.doctor,
+        date: formData.date,
+        time: formData.time,
+        message: formData.message,
+        registeredAt
+      };
+
       if (isServerSuccess) {
+        setBookedDetails(details);
         setSuccess(true);
         onAppointmentBooked(); // Notify parent so navbar unread count is updated
         
@@ -163,6 +195,7 @@ export default function AppointmentForm({ selectedDoctor, selectedService, onApp
         // Notify other components (like Navbar/App) that a new local appointment has been logged
         window.dispatchEvent(new Event('local_appointments_changed'));
 
+        setBookedDetails(details);
         setSuccess(true);
         onAppointmentBooked();
 
@@ -183,6 +216,177 @@ export default function AppointmentForm({ selectedDoctor, selectedService, onApp
       setError('Registration failed. Please refresh and try again.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handlePrint = () => {
+    if (!bookedDetails) return;
+
+    // Open a clean window for printing
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+      printWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <title>PEC Appointment Voucher - ${bookedDetails.ticketId}</title>
+            <style>
+              body {
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+                padding: 40px;
+                color: #0f172a;
+                background: #ffffff;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+              }
+              .header {
+                text-align: center;
+                margin-bottom: 30px;
+                border-bottom: 2px solid #e2e8f0;
+                padding-bottom: 18px;
+              }
+              .title {
+                font-size: 24px;
+                font-weight: 800;
+                color: #1e3a8a;
+                margin: 0;
+              }
+              .subtitle {
+                font-size: 13px;
+                color: #64748b;
+                margin: 4px 0 0 0;
+              }
+              .ticket-box {
+                border: 1px solid #e2e8f0;
+                border-radius: 16px;
+                padding: 24px;
+                background-color: #fafafa;
+                max-width: 600px;
+                margin: 0 auto;
+                box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05);
+              }
+              .ticket-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                border-bottom: 1px solid #e2e8f0;
+                padding-bottom: 12px;
+                margin-bottom: 20px;
+              }
+              .ticket-title {
+                font-size: 11px;
+                font-weight: 800;
+                color: #1d4ed8;
+                letter-spacing: 0.1em;
+              }
+              .ticket-id {
+                font-size: 11px;
+                font-weight: 800;
+                background-color: #eff6ff;
+                color: #1d4ed8;
+                border: 1px solid #bfdbfe;
+                padding: 4px 10px;
+                border-radius: 6px;
+              }
+              .grid {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 16px;
+              }
+              .field {
+                margin-bottom: 8px;
+              }
+              .field-label {
+                font-size: 9px;
+                color: #64748b;
+                text-transform: uppercase;
+                font-weight: 700;
+                margin-bottom: 3px;
+                letter-spacing: 0.05em;
+              }
+              .field-value {
+                font-size: 13px;
+                font-weight: 700;
+                color: #0f172a;
+              }
+              .reason-box {
+                margin-top: 16px;
+                border-top: 1px solid #e2e8f0;
+                padding-top: 12px;
+              }
+              .reason-val {
+                font-size: 12px;
+                font-style: italic;
+                color: #475569;
+              }
+              .footer {
+                text-align: center;
+                font-size: 11px;
+                color: #94a3b8;
+                margin-top: 35px;
+                line-height: 1.5;
+              }
+            </style>
+          </head>
+          <body>
+            <div class="header">
+              <h1 class="title">Priyanka Eye Care Hospital</h1>
+              <p class="subtitle">Bypass Chauraha, Durgaganj Road, Suriyawan, Bhadohi, Uttar Pradesh</p>
+            </div>
+            <div class="ticket-box">
+              <div class="ticket-header">
+                <span class="ticket-title">VISIT VOUCHER SUMMARY</span>
+                <span class="ticket-id">TICKET: ${bookedDetails.ticketId}</span>
+              </div>
+              <div class="grid">
+                <div class="field">
+                  <div class="field-label">Patient Name</div>
+                  <div class="field-value">${bookedDetails.name}</div>
+                </div>
+                <div class="field">
+                  <div class="field-label">Specialist Doctor</div>
+                  <div class="field-value">${bookedDetails.doctor}</div>
+                </div>
+                <div class="field">
+                  <div class="field-label">Medical Department</div>
+                  <div class="field-value">${bookedDetails.service}</div>
+                </div>
+                <div class="field">
+                  <div class="field-label">Preferred Date & Time</div>
+                  <div class="field-value">${bookedDetails.date} &mdash; ${bookedDetails.time}</div>
+                </div>
+                <div class="field">
+                  <div class="field-label">Patient Contact</div>
+                  <div class="field-value">${bookedDetails.phone}</div>
+                </div>
+                <div class="field">
+                  <div class="field-label">Registered At</div>
+                  <div class="field-value">${bookedDetails.registeredAt}</div>
+                </div>
+              </div>
+              ${bookedDetails.message ? `
+              <div class="reason-box">
+                <div class="field-label">Reason Details</div>
+                <div class="reason-val">"${bookedDetails.message}"</div>
+              </div>
+              ` : ''}
+            </div>
+            <div class="footer">
+              We will connect you within 24 hours to confirm. A booking confirmation holding clinical slot details was registered successfully.<br>
+              <strong>Situated near:</strong> Bypass Chauraha, Durgaganj Road, Suriyawan
+            </div>
+            <script>
+              window.onload = function() {
+                window.print();
+                setTimeout(function() {
+                  window.close();
+                }, 500);
+              };
+            </script>
+          </body>
+        </html>
+      `);
+      printWindow.document.close();
     }
   };
 
@@ -621,43 +825,109 @@ export default function AppointmentForm({ selectedDoctor, selectedService, onApp
       {/* Success Modal Alert */}
       <AnimatePresence>
         {success && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
             {/* Backdrop */}
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              onClick={() => setSuccess(false)}
-              className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs"
+              onClick={() => {
+                setSuccess(false);
+                setBookedDetails(null);
+              }}
+              className="fixed inset-0"
             />
             
             {/* Alert container */}
             <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="relative z-10 w-full max-w-md overflow-hidden rounded-2xl bg-white p-6 text-center shadow-2xl border border-slate-100"
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              className="relative z-10 w-full max-w-md overflow-y-auto max-h-[95vh] rounded-3xl bg-white p-4.5 sm:p-5 text-center shadow-2xl border border-slate-100 space-y-4 font-sans"
             >
-              <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 text-emerald-500 border border-emerald-100">
-                <ShieldCheck className="h-8 w-8" />
+              <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-full bg-emerald-50 text-emerald-500 border border-emerald-100">
+                <CheckCircle className="h-6 w-6" />
               </div>
 
-              <h3 className="font-display text-xl font-bold text-slate-900">Appointment Registered!</h3>
-              <p className="text-sm text-slate-500 mt-2 leading-relaxed">
-                Thank you for scheduling your consultation. A secure notification has been dispatched to <strong>ksurajyadav93@gmail.com</strong>.
-              </p>
-              
-              <div className="bg-slate-50 rounded-xl p-4 my-4 text-left border border-slate-100 text-xs text-slate-600 leading-relaxed">
-                We are situated near <strong>Bypass Chauraha, Durgaganj Road, Suriyawan</strong>. Our coordinator will contact you shortly if any rescheduling is required.
+              {/* Status Header Plate */}
+              <div className="bg-emerald-50/40 border border-emerald-100/60 rounded-2xl p-3 text-center space-y-1">
+                <h3 className="font-display text-base font-extrabold text-slate-900">Appointment Booked!</h3>
+                <p className="text-[10.5px] text-slate-600 leading-normal font-medium max-w-xs mx-auto">
+                  We will connect you within 24 hours to confirm. A booking confirmation holding clinical slot details was registered successfully.
+                </p>
               </div>
 
-              <button
-                id="close-success-booking"
-                onClick={() => setSuccess(false)}
-                className="w-full rounded-lg bg-blue-700 py-3 text-sm font-bold text-white hover:bg-blue-800 transition"
-              >
-                Close & Return
-              </button>
+              {/* Visit Voucher Summary Card */}
+              {bookedDetails && (
+                <div id="printable-voucher-card" className="border border-slate-200 bg-slate-50/20 rounded-2xl p-3 text-left space-y-2.5">
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-1.5">
+                    <span className="text-[9px] font-mono font-extrabold tracking-wider text-blue-700">
+                      VISIT VOUCHER SUMMARY
+                    </span>
+                    <span className="text-[9px] font-mono font-bold bg-blue-50 text-blue-700 border border-blue-100 px-1.5 py-0.5 rounded-md">
+                      TICKET: {bookedDetails.ticketId}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-x-3.5 gap-y-2 text-xs">
+                    <div>
+                      <div className="text-[9px] font-mono font-bold text-slate-400 uppercase tracking-tight">PATIENT NAME</div>
+                      <div className="font-extrabold text-slate-800 truncate">{bookedDetails.name}</div>
+                    </div>
+                    <div>
+                      <div className="text-[9px] font-mono font-bold text-slate-400 uppercase tracking-tight">SPECIALIST DOCTOR</div>
+                      <div className="font-extrabold text-slate-800 truncate">{bookedDetails.doctor}</div>
+                    </div>
+                    <div>
+                      <div className="text-[9px] font-mono font-bold text-slate-400 uppercase tracking-tight">MEDICAL DEPARTMENT</div>
+                      <div className="font-extrabold text-slate-800 truncate">{bookedDetails.service}</div>
+                    </div>
+                    <div>
+                      <div className="text-[9px] font-mono font-bold text-slate-400 uppercase tracking-tight">PREFERRED DATE & TIME</div>
+                      <div className="font-extrabold text-slate-800 text-[11px] leading-tight">{bookedDetails.date} — {bookedDetails.time}</div>
+                    </div>
+                    <div>
+                      <div className="text-[9px] font-mono font-bold text-slate-400 uppercase tracking-tight">PATIENT CONTACT</div>
+                      <div className="font-extrabold text-slate-800 truncate font-mono">{bookedDetails.phone}</div>
+                    </div>
+                    <div>
+                      <div className="text-[9px] font-mono font-bold text-slate-400 uppercase tracking-tight">REGISTERED AT</div>
+                      <div className="font-extrabold text-slate-800 truncate">{bookedDetails.registeredAt}</div>
+                    </div>
+                  </div>
+
+                  {bookedDetails.message && (
+                    <div className="border-t border-slate-100 pt-2">
+                      <div className="text-[9px] font-mono font-bold text-slate-400 uppercase tracking-tight">REASON DETAILS</div>
+                      <div className="text-xs italic text-slate-600 mt-0.5 leading-relaxed font-medium">
+                        "{bookedDetails.message}"
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div className="flex gap-2.5 pt-1">
+                <button
+                  type="button"
+                  onClick={handlePrint}
+                  className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 py-2.5 text-xs font-bold text-slate-700 transition cursor-pointer active:scale-95"
+                >
+                  <Printer className="h-3.5 w-3.5" />
+                  <span>Print Voucher</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSuccess(false);
+                    setBookedDetails(null);
+                  }}
+                  className="flex-1 rounded-xl bg-blue-700 hover:bg-blue-800 py-2.5 text-xs font-bold text-white transition cursor-pointer active:scale-95 shadow-sm shadow-blue-100"
+                >
+                  Reserve Another Appointment
+                </button>
+              </div>
             </motion.div>
           </div>
         )}

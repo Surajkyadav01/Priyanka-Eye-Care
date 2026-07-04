@@ -1,0 +1,8 @@
+{
+  "firestore": [
+    {
+      "database": "ai-studio-priyankaeyecare-new",
+      "rules": "firestore.rules"
+    }
+  ]
+}
