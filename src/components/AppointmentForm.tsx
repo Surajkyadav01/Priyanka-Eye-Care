@@ -164,33 +164,34 @@ export default function AppointmentForm({ selectedDoctor, selectedService, onApp
 
       let isDbSuccess = false;
 
+      // 1. Attempt client-side write directly to Firebase Firestore
       try {
-        // 1. Attempt client-side write directly to Firebase Firestore
         await setDoc(doc(db, 'appointments', appointmentId), appointmentData);
         isDbSuccess = true;
         console.log('Successfully saved appointment directly to Firebase Firestore!');
       } catch (fbErr) {
-        console.warn('Direct Firebase save failed, attempting backend server save:', fbErr);
-        
-        // 2. Fallback: Attempt backend server save (if server is running)
-        try {
-          const response = await fetch('/api/appointments', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ ...formData, id: appointmentId, ticketId, createdAt })
-          });
+        console.warn('Direct Firebase save failed:', fbErr);
+      }
+      
+      // 2. Also save to backend server to trigger email alerts and file backups (even if client-side write succeeded)
+      try {
+        const response = await fetch('/api/appointments', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ ...formData, id: appointmentId, ticketId, createdAt })
+        });
 
-          if (response.ok) {
-            const result = await response.json();
-            if (result && result.success) {
-              isDbSuccess = true;
-            }
+        if (response.ok) {
+          const result = await response.json();
+          if (result && result.success) {
+            isDbSuccess = true;
+            console.log('Successfully recorded appointment on backend server!');
           }
-        } catch (fetchErr) {
-          console.warn('Backend server not reachable:', fetchErr);
         }
+      } catch (fetchErr) {
+        console.warn('Backend server save failed or unreachable:', fetchErr);
       }
 
       if (isDbSuccess) {

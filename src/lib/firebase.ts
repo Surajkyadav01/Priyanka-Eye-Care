@@ -18,9 +18,14 @@ if (hasValidConfig) {
       appId: firebaseConfig.appId,
     };
     app = getApps().length === 0 ? initializeApp(config) : getApp();
-    dbInstance = firebaseConfig.firestoreDatabaseId 
-      ? getFirestore(app, firebaseConfig.firestoreDatabaseId)
-      : getFirestore(app);
+    try {
+      dbInstance = firebaseConfig.firestoreDatabaseId 
+        ? getFirestore(app, firebaseConfig.firestoreDatabaseId)
+        : getFirestore(app);
+    } catch (dbErr) {
+      console.warn(`Failed to initialize custom named database '${firebaseConfig.firestoreDatabaseId}', falling back to '(default)':`, dbErr);
+      dbInstance = getFirestore(app);
+    }
     console.log('Firebase Firestore client initialized successfully with project ID:', firebaseConfig.projectId);
   } catch (err) {
     console.error('Failed to initialize Firebase client:', err);

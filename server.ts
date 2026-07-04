@@ -53,10 +53,15 @@ try {
       appId: configData.appId
     };
     firebaseApp = initializeApp(firebaseConfig);
-    if (configData.firestoreDatabaseId) {
-       db = getFirestore(firebaseApp, configData.firestoreDatabaseId);
-    } else {
-       db = getFirestore(firebaseApp);
+    try {
+      if (configData.firestoreDatabaseId) {
+         db = getFirestore(firebaseApp, configData.firestoreDatabaseId);
+      } else {
+         db = getFirestore(firebaseApp);
+      }
+    } catch (dbErr) {
+      console.warn(`Failed to initialize custom named database '${configData.firestoreDatabaseId}' on server, falling back to '(default)':`, dbErr);
+      db = getFirestore(firebaseApp);
     }
     console.log('Firebase Firestore initialized successfully with project ID:', configData.projectId);
   } else {
