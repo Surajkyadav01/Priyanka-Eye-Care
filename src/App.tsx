@@ -18,8 +18,8 @@ import Testimonials from './components/Testimonials';
 import Footer from './components/Footer';
 import AdminDashboard from './components/AdminDashboard';
 import LegalModal from './components/LegalModals';
-import { db } from './lib/firebase';
-import { collection, getDocs, query, where } from 'firebase/firestore';
+import { db, handleFirestoreError, OperationType } from './lib/firebase';
+import { collection, getDocs, query, where, onSnapshot } from 'firebase/firestore';
 
 export default function App() {
   const [unreadCount, setUnreadCount] = useState(0);
@@ -112,6 +112,26 @@ export default function App() {
     };
     window.addEventListener('local_appointments_changed', handleLocalChange);
 
+    // Setup real-time listener on Firebase Firestore
+    let unsubscribeFirestore: (() => void) | null = null;
+    try {
+      const q = query(collection(db, 'appointments'), where('isRead', '==', false));
+      unsubscribeFirestore = onSnapshot(q, (querySnapshot) => {
+        setUnreadCount(querySnapshot.size);
+        console.log('Real-time unread badge count updated from Firestore:', querySnapshot.size);
+      }, (fbErr) => {
+        console.warn('Direct Firebase real-time subscription failed, falling back to polling:', fbErr);
+        try {
+          handleFirestoreError(fbErr, OperationType.GET, 'appointments');
+        } catch (e) {
+          // Prevent throwing directly if we want to gracefully degrade to fetchUnreadBadge
+          fetchUnreadBadge();
+        }
+      });
+    } catch (err) {
+      console.warn('Could not establish real-time Firestore listener:', err);
+    }
+
     // Polling interval to check for new bookings on admin portal (every 12 seconds)
     const interval = setInterval(fetchUnreadBadge, 12000);
 
@@ -149,6 +169,9 @@ export default function App() {
     window.addEventListener('scroll', handleScroll);
     return () => {
       clearInterval(interval);
+      if (unsubscribeFirestore) {
+        unsubscribeFirestore();
+      }
       window.removeEventListener('local_appointments_changed', handleLocalChange);
       window.removeEventListener('scroll', handleScroll);
       if (scrollTimeoutRef.current) {

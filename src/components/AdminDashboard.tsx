@@ -11,8 +11,8 @@ import {
 } from 'lucide-react';
 import { Appointment } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
-import { db } from '../lib/firebase';
-import { collection, getDocs, query, orderBy, doc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { db, handleFirestoreError, OperationType } from '../lib/firebase';
+import { collection, getDocs, query, orderBy, doc, updateDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
 
 interface AdminDashboardProps {
   isOpen: boolean;
@@ -66,10 +66,58 @@ export default function AdminDashboard({ isOpen, onClose, onAppointmentsChanged 
       const pass = sessionStorage.getItem('admin_pass');
       if (token && pass) {
         setIsAuthenticated(true);
-        fetchAppointments(pass);
       }
     }
   }, [isOpen]);
+
+  // Establish real-time listener on appointments when dashboard is open and authenticated
+  useEffect(() => {
+    let unsubscribeFirestore: (() => void) | null = null;
+    
+    if (isOpen && isAuthenticated) {
+      const pass = sessionStorage.getItem('admin_pass') || 'doctor';
+      setLoading(true);
+      setError(null);
+      
+      try {
+        const q = query(collection(db, 'appointments'), orderBy('createdAt', 'desc'));
+        unsubscribeFirestore = onSnapshot(q, (querySnapshot) => {
+          const docsList: Appointment[] = [];
+          querySnapshot.forEach((docSnapshot) => {
+            docsList.push({ id: docSnapshot.id, ...docSnapshot.data() } as Appointment);
+          });
+          
+          setAppointments(docsList);
+          setLoading(false);
+          console.log('Real-time admin appointments list updated:', docsList.length);
+          
+          // Auto-mark notifications as read
+          try {
+            markAllNotificationsAsRead(pass, docsList);
+          } catch (e) {
+            console.warn('Could not auto-mark read:', e);
+          }
+        }, (fbErr) => {
+          console.warn('Admin real-time listener failed, falling back to static fetch:', fbErr);
+          try {
+            handleFirestoreError(fbErr, OperationType.GET, 'appointments');
+          } catch (e) {
+            // Fetch once as fallback
+            fetchAppointments(pass);
+          }
+        });
+      } catch (err) {
+        console.warn('Failed to set up Admin real-time listener:', err);
+        fetchAppointments(pass);
+      }
+    }
+    
+    return () => {
+      if (unsubscribeFirestore) {
+        unsubscribeFirestore();
+      }
+    };
+  }, [isOpen, isAuthenticated]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
