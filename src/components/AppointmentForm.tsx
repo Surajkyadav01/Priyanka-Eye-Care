@@ -7,6 +7,8 @@ import React, { useState, useEffect } from 'react';
 import { CalendarRange, UserCheck, Stethoscope, Clock, ShieldCheck, Mail, Phone, User, MessageSquare, ChevronLeft, ChevronRight, Printer, CheckCircle } from 'lucide-react';
 import { SERVICES, DOCTORS } from '../data';
 import { motion, AnimatePresence } from 'motion/react';
+import { db } from '../lib/firebase';
+import { doc, setDoc } from 'firebase/firestore';
 
 interface AppointmentFormProps {
   selectedDoctor: string;
@@ -122,33 +124,31 @@ export default function AppointmentForm({ selectedDoctor, selectedService, onApp
     }
 
     try {
-      let isServerSuccess = false;
-      let result;
-      try {
-        const response = await fetch('/api/appointments', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(formData)
-        });
-
-        if (response.ok) {
-          result = await response.json();
-          if (result && result.success) {
-            isServerSuccess = true;
-          }
-        }
-      } catch (fetchErr) {
-        console.warn('Backend server not reachable, falling back to local browser storage:', fetchErr);
-      }
-
+      const appointmentId = `apt_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
       const ticketId = `PEC-${new Date().getFullYear()}-${Math.floor(100000 + Math.random() * 900000)}`;
       const registeredAt = new Date().toLocaleDateString('en-GB', {
         day: 'numeric',
         month: 'short',
         year: 'numeric'
       });
+      const createdAt = new Date().toISOString();
+
+      const appointmentData = {
+        id: appointmentId,
+        ticketId,
+        name: formData.name,
+        phone: formData.phone,
+        email: formData.email,
+        service: formData.service,
+        doctor: formData.doctor,
+        date: formData.date,
+        time: formData.time,
+        message: formData.message,
+        status: 'pending' as const,
+        createdAt,
+        isRead: false
+      };
+
       const details = {
         ticketId,
         name: formData.name,
@@ -162,7 +162,38 @@ export default function AppointmentForm({ selectedDoctor, selectedService, onApp
         registeredAt
       };
 
-      if (isServerSuccess) {
+      let isDbSuccess = false;
+
+      try {
+        // 1. Attempt client-side write directly to Firebase Firestore
+        await setDoc(doc(db, 'appointments', appointmentId), appointmentData);
+        isDbSuccess = true;
+        console.log('Successfully saved appointment directly to Firebase Firestore!');
+      } catch (fbErr) {
+        console.warn('Direct Firebase save failed, attempting backend server save:', fbErr);
+        
+        // 2. Fallback: Attempt backend server save (if server is running)
+        try {
+          const response = await fetch('/api/appointments', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ ...formData, id: appointmentId, ticketId, createdAt })
+          });
+
+          if (response.ok) {
+            const result = await response.json();
+            if (result && result.success) {
+              isDbSuccess = true;
+            }
+          }
+        } catch (fetchErr) {
+          console.warn('Backend server not reachable:', fetchErr);
+        }
+      }
+
+      if (isDbSuccess) {
         setBookedDetails(details);
         setSuccess(true);
         onAppointmentBooked(); // Notify parent so navbar unread count is updated
@@ -179,17 +210,10 @@ export default function AppointmentForm({ selectedDoctor, selectedService, onApp
           message: ''
         });
       } else {
-        // Fallback to localStorage (used when running statically on e.g. GitHub Pages)
+        // 3. Last fallback: Fallback to localStorage (used when completely offline)
         const localAptsStr = localStorage.getItem('pec_local_appointments') || '[]';
         const localApts = JSON.parse(localAptsStr);
-        const newApt = {
-          id: 'local_' + Date.now(),
-          ...formData,
-          status: 'pending',
-          createdAt: new Date().toISOString(),
-          isRead: false
-        };
-        localApts.push(newApt);
+        localApts.push(appointmentData);
         localStorage.setItem('pec_local_appointments', JSON.stringify(localApts));
 
         // Notify other components (like Navbar/App) that a new local appointment has been logged

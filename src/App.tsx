@@ -18,6 +18,8 @@ import Testimonials from './components/Testimonials';
 import Footer from './components/Footer';
 import AdminDashboard from './components/AdminDashboard';
 import LegalModal from './components/LegalModals';
+import { db } from './lib/firebase';
+import { collection, getDocs, query, where } from 'firebase/firestore';
 
 export default function App() {
   const [unreadCount, setUnreadCount] = useState(0);
@@ -54,24 +56,36 @@ export default function App() {
     }
   };
 
-  // Sync / fetch unread badge from backend
+  // Sync / fetch unread badge from backend or Firebase Firestore directly
   const fetchUnreadBadge = async () => {
-    let isServerSuccess = false;
+    let isDbSuccess = false;
     try {
-      const response = await fetch('/api/appointments/unread-badge');
-      if (response.ok) {
-        const data = await response.json();
-        if (data && typeof data.unreadCount === 'number') {
-          setUnreadCount(data.unreadCount);
-          isServerSuccess = true;
+      // 1. Attempt client-side fetch directly from Firebase Firestore
+      const q = query(collection(db, 'appointments'), where('isRead', '==', false));
+      const querySnapshot = await getDocs(q);
+      setUnreadCount(querySnapshot.size);
+      isDbSuccess = true;
+      console.log('Successfully fetched unread badge count from Firebase directly:', querySnapshot.size);
+    } catch (fbErr) {
+      console.warn('Direct Firebase unread-badge fetch failed, trying backend server fallback:', fbErr);
+      
+      // 2. Fallback: Try fetching from backend server
+      try {
+        const response = await fetch('/api/appointments/unread-badge');
+        if (response.ok) {
+          const data = await response.json();
+          if (data && typeof data.unreadCount === 'number') {
+            setUnreadCount(data.unreadCount);
+            isDbSuccess = true;
+          }
         }
+      } catch (err) {
+        console.warn('Failed to fetch unread badge from server:', err);
       }
-    } catch (err) {
-      console.warn('Failed to fetch live notifications from server:', err);
     }
 
-    if (!isServerSuccess) {
-      // Local storage fallback for static deployments (e.g. GitHub Pages)
+    if (!isDbSuccess) {
+      // 3. Fallback: Local storage unread count for offline mode
       try {
         const localAptsStr = localStorage.getItem('pec_local_appointments') || '[]';
         const localApts = JSON.parse(localAptsStr);

@@ -11,6 +11,8 @@ import {
 } from 'lucide-react';
 import { Appointment } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
+import { db } from '../lib/firebase';
+import { collection, getDocs, query, orderBy, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 
 interface AdminDashboardProps {
   isOpen: boolean;
@@ -239,25 +241,50 @@ export default function AdminDashboard({ isOpen, onClose, onAppointmentsChanged 
   const fetchAppointments = async (passKey: string) => {
     setLoading(true);
     setError(null);
-    let isServerSuccess = false;
+    let isDbSuccess = false;
+
     try {
-      const response = await fetch(`/api/appointments?password=${encodeURIComponent(passKey)}`, {
-        headers: { 'x-admin-password': passKey }
+      // 1. Attempt client-side read directly from Firebase Firestore
+      const q = query(collection(db, 'appointments'), orderBy('createdAt', 'desc'));
+      const querySnapshot = await getDocs(q);
+      const docsList: Appointment[] = [];
+      querySnapshot.forEach((docSnapshot) => {
+        docsList.push({ id: docSnapshot.id, ...docSnapshot.data() } as Appointment);
       });
-      if (response.ok) {
-        const data = await response.json();
-        if (data && data.appointments) {
-          setAppointments(data.appointments);
-          isServerSuccess = true;
-          await markAllNotificationsAsRead(passKey);
-        }
+      
+      setAppointments(docsList);
+      isDbSuccess = true;
+      console.log('Successfully fetched appointments directly from Firebase Firestore!');
+      
+      // Auto-mark notifications as read
+      try {
+        await markAllNotificationsAsRead(passKey, docsList);
+      } catch (e) {
+        console.warn('Could not auto-mark read:', e);
       }
-    } catch (err) {
-      console.warn('Backend fetch failed, falling back to local storage:', err);
+    } catch (fbErr) {
+      console.warn('Direct Firebase fetch failed, trying backend server fallback:', fbErr);
+      
+      // 2. Fallback: Try fetching from backend server
+      try {
+        const response = await fetch(`/api/appointments?password=${encodeURIComponent(passKey)}`, {
+          headers: { 'x-admin-password': passKey }
+        });
+        if (response.ok) {
+          const data = await response.json();
+          if (data && data.appointments) {
+            setAppointments(data.appointments);
+            isDbSuccess = true;
+            await markAllNotificationsAsRead(passKey, data.appointments);
+          }
+        }
+      } catch (err) {
+        console.warn('Backend fetch failed, falling back to local storage:', err);
+      }
     }
 
-    if (!isServerSuccess) {
-      // Local storage fallback for static deployments (e.g. GitHub Pages)
+    if (!isDbSuccess) {
+      // 3. Fallback: Local storage fallback for completely static offline mode
       try {
         const localAptsStr = localStorage.getItem('pec_local_appointments') || '[]';
         const localApts: Appointment[] = JSON.parse(localAptsStr);
@@ -314,17 +341,31 @@ export default function AdminDashboard({ isOpen, onClose, onAppointmentsChanged 
     setLoading(false);
   };
 
-  const markAllNotificationsAsRead = async (passKey: string) => {
+  const markAllNotificationsAsRead = async (passKey: string, currentAppointments?: Appointment[]) => {
+    const listToProcess = currentAppointments || appointments;
     try {
-      await fetch('/api/appointments/mark-read', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: passKey })
-      });
-      onAppointmentsChanged(); // Trigger navbar layout update
-    } catch (err) {
-      console.warn('Failed to clear unread flag:', err);
+      // Direct Firebase update for unread appointments
+      const unreadApts = listToProcess.filter(apt => !apt.isRead);
+      if (unreadApts.length > 0) {
+        const updatePromises = unreadApts.map(apt => 
+          updateDoc(doc(db, 'appointments', apt.id), { isRead: true })
+        );
+        await Promise.all(updatePromises);
+        console.log('Successfully marked all notifications as read in Firebase directly!');
+      }
+    } catch (fbErr) {
+      console.warn('Direct Firebase mark-read failed, trying backend server mark-read:', fbErr);
+      try {
+        await fetch('/api/appointments/mark-read', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password: passKey })
+        });
+      } catch (err) {
+        console.warn('Failed to clear unread flag via backend:', err);
+      }
     }
+    onAppointmentsChanged(); // Trigger navbar layout update
   };
 
   const updateStatus = async (appointmentId: string, nextStatus: 'accepted' | 'rejected') => {
@@ -332,29 +373,40 @@ export default function AdminDashboard({ isOpen, onClose, onAppointmentsChanged 
     if (!pass) return;
 
     setActionLoading(appointmentId);
-    let isServerSuccess = false;
-    try {
-      const response = await fetch(`/api/appointments/${appointmentId}/status`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: pass, status: nextStatus })
-      });
+    let isDbSuccess = false;
 
-      if (response.ok) {
-        isServerSuccess = true;
+    try {
+      // 1. Attempt status update directly in Firebase Firestore
+      await updateDoc(doc(db, 'appointments', appointmentId), { status: nextStatus, isRead: true });
+      isDbSuccess = true;
+      console.log('Successfully updated appointment status in Firebase directly!');
+    } catch (fbErr) {
+      console.warn('Direct Firebase status update failed, attempting backend server save:', fbErr);
+      
+      // 2. Fallback: Attempt backend server save (if server is running)
+      try {
+        const response = await fetch(`/api/appointments/${appointmentId}/status`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password: pass, status: nextStatus })
+        });
+
+        if (response.ok) {
+          isDbSuccess = true;
+        }
+      } catch (err) {
+        console.warn('Backend server status update failed:', err);
       }
-    } catch (err) {
-      console.warn('Backend server not reachable for updating status, updating locally:', err);
     }
 
-    if (isServerSuccess) {
+    if (isDbSuccess) {
       // Update local state smoothly
       setAppointments(prev =>
         prev.map(apt => (apt.id === appointmentId ? { ...apt, status: nextStatus, isRead: true } : apt))
       );
       onAppointmentsChanged();
     } else {
-      // Fallback update in local storage (e.g. GitHub Pages static mode)
+      // 3. Last fallback: Fallback update in local storage
       try {
         const localAptsStr = localStorage.getItem('pec_local_appointments') || '[]';
         let localApts: Appointment[] = JSON.parse(localAptsStr);
@@ -377,18 +429,31 @@ export default function AdminDashboard({ isOpen, onClose, onAppointmentsChanged 
     if (!pass) return;
 
     setActionLoading(appointmentId);
+    let isDbDeleted = false;
     
-    // 1. Attempt to delete from backend server
+    // 1. Attempt client-side delete directly from Firebase Firestore
     try {
-      await fetch(`/api/appointments/${appointmentId}?password=${encodeURIComponent(pass)}`, {
-        method: 'DELETE',
-        headers: { 'x-admin-password': pass }
-      });
-    } catch (err) {
-      console.warn('Backend server not reachable for deletion, proceeding with local purge:', err);
+      await deleteDoc(doc(db, 'appointments', appointmentId));
+      isDbDeleted = true;
+      console.log('Successfully deleted appointment from Firebase directly!');
+    } catch (fbErr) {
+      console.warn('Direct Firebase deletion failed, attempting backend server delete:', fbErr);
+      
+      // 2. Fallback: Attempt backend server delete
+      try {
+        const response = await fetch(`/api/appointments/${appointmentId}?password=${encodeURIComponent(pass)}`, {
+          method: 'DELETE',
+          headers: { 'x-admin-password': pass }
+        });
+        if (response.ok) {
+          isDbDeleted = true;
+        }
+      } catch (err) {
+        console.warn('Backend server delete failed:', err);
+      }
     }
 
-    // 2. Always purge from local storage to keep client and database perfectly in sync
+    // 3. Always purge from local storage to keep client in sync
     try {
       const localAptsStr = localStorage.getItem('pec_local_appointments') || '[]';
       let localApts: Appointment[] = JSON.parse(localAptsStr);
@@ -398,7 +463,7 @@ export default function AdminDashboard({ isOpen, onClose, onAppointmentsChanged 
       console.error('Error deleting appointment locally:', e);
     }
 
-    // 3. Immediately update local state list and trigger badge counters updates
+    // Immediately update local state list and trigger badge counters updates
     setAppointments(prev => prev.filter(apt => apt.id !== appointmentId));
     onAppointmentsChanged();
 
