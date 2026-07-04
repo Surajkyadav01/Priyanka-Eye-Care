@@ -2,22 +2,41 @@ import { initializeApp, getApp, getApps } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 
-const config = {
-  apiKey: firebaseConfig.apiKey,
-  authDomain: firebaseConfig.authDomain,
-  projectId: firebaseConfig.projectId,
-  storageBucket: firebaseConfig.storageBucket,
-  messagingSenderId: firebaseConfig.messagingSenderId,
-  appId: firebaseConfig.appId,
-};
+const hasValidConfig = firebaseConfig && firebaseConfig.apiKey && firebaseConfig.projectId;
 
-// Initialize Firebase
-const app = getApps().length === 0 ? initializeApp(config) : getApp();
+let app: any = null;
+let dbInstance: any = null;
 
-// Get Firestore instance (with databaseId if specified)
-export const db = firebaseConfig.firestoreDatabaseId 
-  ? getFirestore(app, firebaseConfig.firestoreDatabaseId)
-  : getFirestore(app);
+if (hasValidConfig) {
+  try {
+    const config = {
+      apiKey: firebaseConfig.apiKey,
+      authDomain: firebaseConfig.authDomain,
+      projectId: firebaseConfig.projectId,
+      storageBucket: firebaseConfig.storageBucket,
+      messagingSenderId: firebaseConfig.messagingSenderId,
+      appId: firebaseConfig.appId,
+    };
+    app = getApps().length === 0 ? initializeApp(config) : getApp();
+    dbInstance = firebaseConfig.firestoreDatabaseId 
+      ? getFirestore(app, firebaseConfig.firestoreDatabaseId)
+      : getFirestore(app);
+    console.log('Firebase Firestore client initialized successfully with project ID:', firebaseConfig.projectId);
+  } catch (err) {
+    console.error('Failed to initialize Firebase client:', err);
+  }
+} else {
+  console.warn('Firebase configuration is missing or incomplete. Using fallback static/local modes.');
+}
+
+// Export safe db: if real instance is null, return a Proxy to prevent crashing on module load
+export const db = dbInstance || (new Proxy({}, {
+  get(target, prop) {
+    return () => {
+      throw new Error('Firebase is not initialized due to missing or empty configuration.');
+    };
+  }
+}) as any);
 
 export enum OperationType {
   CREATE = 'create',
